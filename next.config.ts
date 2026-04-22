@@ -1,7 +1,3 @@
-const nextConfig = {
-  output: "export",
-  basePath: "/certis-dcm-hub",
-  assetPrefix: "/certis-dcm-hub/",
-};
+const nextConfig = {};
 
 export default nextConfig;
