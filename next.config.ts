@@ -1,7 +1,7 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  /* config options here */
+const nextConfig = {
+  output: "export",
+  basePath: "/certis-dcm-hub",
+  assetPrefix: "/certis-dcm-hub/",
 };
 
 export default nextConfig;

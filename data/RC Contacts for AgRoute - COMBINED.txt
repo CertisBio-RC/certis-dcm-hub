@@ -1,0 +1,139 @@
+state	national_name	company_name	supplier	corporate_kingpin	regional_kingpin	title	address	office_phone	cell_phone	email	contact_type
+MN	HELENA	HELENA-RETAIL	Helena	Steven McKechnie		AGRIntelligence Argonomist	"1408 S. Sycamore Ave., Sioux Falls, SD 57110"	515-309-3490	319-588-7188	mckechnies@helenagri.com	Contact
+NE	OTHER	Aurora Coop.	Winfield	Carl Smith		Chief Financial Officer	"2225 Q St., Aurora, NE 68818"	402-694-2106		csmith@auroracoop.com	Contact
+NE	OTHER	Aurora Coop.	Winfield	Chris Decker		Chief Executive Officer	"2225 Q St., Aurora, NE 68818"	402-694-2106		cdecker@auroracoop.com	Contact
+NE	OTHER	Aurora Coop.	Winfield	Jason Throener		SVP – Agronomy	"2225 Q St., Aurora, NE 68818"	402-694-2106		jthroener@auroracoop.com	Contact
+IL	HELENA - RETAIL		Helena		Todd Boers	Prod. Mgr.	"25449 N. 1200 Ave., Kewanee, IL 61443"		309-854-2912		Contact
+MN	HELENA	HELENA-RETAIL	Helena	Jeff Schreck		AIGRIntelligence Product Mgr.	"405 N. 11th St., Guthrie Center, IA 50115"	641-747-6303	641-757-0607	schreckj@helenaagri.com	Contact
+IL	Growmark		Growmark		Barry Soliday	Area Sales Mgr.	"406 Washington St., Farmer City, IL 61842"		217-871-1662	bsoliday@growmark.com	Contact
+MN	OTHER	Western Consolidated Coop.	"Nutrien, Rosen's"	Darrell Bartz		Agronomy Mgr.	"520 County Road 9, Holloway, MN 56249"	320-394-2180	320-241-7697	dbartz@west-con.com	Contact
+IA	Growmark - RETAIL	Three Rivers FS	Growmark		Paul Roberg		1000 S 5th Street Manchester IA 52057			proberg@threeriversfs.com	Contact
+IA	OTHER	Heartland Coop.	"Nutrien, Winfield, Rosen's"		Brett Schnathorst	Location Manager	"1001 E Main St, Marshalltown, IA 50158"	641-752-2418	641-485-7006	bschnathorst@heartlandcoop.com	Contact
+IA	Growmark - RETAIL	New Century FS	Growmark		Troy Koehler	Retail Div Mgr	"1017 Ogan Ave, Grinnell, IA 50112"	(641) 236-3117		tkoehler@newcenturyfs.com	Contact
+SD	OTHER	Mustang Seeds	Winfield		Jeff Mortimer	Seed Advisor Lead	"1021 SW 10th St., PO Box 466, Madison, SD 57042"	605-256-6529	913-335-5474	jmortimer@mustangseeds.com	Contact
+SD	OTHER	Agtegra	"Winfield, Rosen's"		David J. Merxbauer	Branch Mgr. (Bath)	"105 392nd Avenue S Aberdeen, SD 57401"	605-225-3280	605-268-0775	david.merxbauer@agtegra.com	Contact
+IA	OTHER	Heartland Coop.	"Nutrien, Winfield, Rosen's"		Charlie White	Location Manager	"107 2nd St, Malcom, IA 50157"	641-528-2535	641-990-5912	cwhite@heartlandcoop.com	Contact
+IA	NUTRIEN - RETAIL	NUTRIEN-IA	Nutrien		Wade Eisenbarth	Branch Mgr.	"109 Linn St. PO Box 159, LuVerne, IA 59560"	515-320-0960	515-882-3234	wade.eisenbarth@nutrien.com	Contact
+IL	OTHER	"United Prairie, LLC"	Winfield		Austin Wiggins	Sales Agronomist	"1274 E. Old Rd. 47, White Heath, IL 61884"	217-462-7711	217-419-5565	awiggins@unitedprairie.com	Contact
+IL	HELENA - RETAIL		Helena		Samantha Harper	Sales Rep/Oper. Mgr.	"12959 E. 22750 N. Rd., Danville, IL 61834"	217-286-3562	217-273-3260	harpers@helenaagri.com	Contact
+IL	HELENA - RETAIL		Helena		Parker Hathaway	Crop Advisor	"12960 E. 22750 N. Rd., Danville, IL 61834"	217-286-3562	217-799-1069	hathawayp@helenaagri.com	Contact
+MN	OTHER	Meadowland Famers Coop.	"Helena, Nutrien, Winfield"		Brian Fischer	Agronomy Loc. Mgr.	"140 State Hwy 68, Wabasso, MN 56293"	507-342-5163	507-829-4929	bfischer@mfcoop.us	Contact
+NE	OTHER	Central Valley Ag Coop.	Winfield		Brandt Anderson	Location Mgr.	"1421 B St. 0147, Tekamah, NE 68061"	402-374-2180	402-870-0224	brandt.anderson@cvacoop.com	Contact
+IL	OTHER	Brandt			Pat Hermes	Plant Manager	"16714 Old Rt. 54, New Berlin, IL 62670"	217-488-3125	217-652-4555	pat.hermes@brandt.com	Contact
+IL	HELENA - RETAIL		Helena		Jason Smith	Operations Mgr.	"1992 Old Grace Rd., Meredosia, IL 62665"	217-584-1133	217-204-8197	smithjason@helenaagri.com	Contact
+IA	Growmark - RETAIL	Agvantage FS	Growmark		Rick Schwennen	Crop Consultant	"20081 22nd St, Maquoketa, IA 52060"	563-652-5636	319-559-8471	rschwennen@agvantagefs.com	Contact
+IA	Growmark - RETAIL	Three Rivers FS	Growmark		Gary Connolly		20340 Holy Cross Road Holy Cross IA 52053			gconnolly@threeriversfs.com	Contact
+IA	OTHER	Heartland Coop.	"Nutrien, Winfield, Rosen's"		Mark Toennies	Location Manager	"207 Railway St, Elberon, IA 52225"	319-439-5382	319-231-6569	mtoennies@heartlandcoop.com	Contact
+IL	Growmark		Growmark		Brett Isley	Area Sales Mgr.	"209 S. Camp St. Apt. 4, Olney, IL 62450"		217-248-5992	bisley@growmark.com	Contact
+IA	Growmark - RETAIL	Agvantage FS	Growmark		Jordan Heit	Crop Specialist	"2131 Old Hwy. Rd., Charles City, IA 50616"	641-228-1153	319-215-9278	jheit@agvantagefs.com	Contact
+IA	OTHER	Countryside Ag Service			Randy Van Veldhuizen	Owner	"2156 390th St., Hawarden, IA 50123"	712-722-2675	712-441-5632	randyvanveld@gmail.com	Contact
+MN	OTHER	Meadowland Famers Coop.	"Helena, Nutrien, Winfield"		Curt Erickson	Agronomy Loc. Mgr.	"220 N. Main, Sanborn, MN 56083"	507-648-3831	507-830-1251	cerickson@mfcoop.us	Contact
+MN	CHS - RETAIL	CHS - Rochester			Rod Hart	Agronomist	"23142 MN Hwy 74, St. Charles, MN 55972"	507-289-4086	507-259-3026	rod.hart@chsinc.com	Contact
+IA	Growmark - RETAIL	Three Rivers FS	Growmark		Chad Keehner		24544 Hwy 13 PO Box 426 Elkader IA 52043			ckeehner@threeriversfs.com	Contact
+IL	HELENA - RETAIL		Helena		Greg Mills	AGRintelligence Agronomist	"2469 Homer Lake Rd., St. Joseph, IL 61873"		217-202-8644	gregmills63@gmail.com	Contact
+IL	OTHER	Ottawa Plant Food	Rosen's		Anita Pleasant	Sales Territory Mgr.	"3076 N. Rt. 71 at I-80, Ottawa, IL 61350"	815-433-2090	217-663-4770	apleasant@ottawaplantfood.com	Contact
+IA	Growmark - RETAIL	Three Rivers FS	Growmark		Tyler Smith		32199 Olde Castle Road Dyersville IA 52040			tsmith@threeriversfs.com	Contact
+IL	OTHER	Brandt			Tim Greer	Location Mgr.	"32995 IL 135, Ashland, IL 62612"	217-476-3438		tim.greer@brandt.co	Contact
+NE	OTHER	Legacy Coop/Panhandle Coop Assn.			Sean Gross	Sales Agronomist	"401 S. Beltline Hwy West, Scottsbluff, NE 69363"	308-632-5301	308-225-1232	sgross@panhandlecoop.com	Contact
+IA	OTHER	Heartland Coop.	"Nutrien, Winfield, Rosen's"		Jonathan Struthers	Location Manager	"407 E Maple St, Baxter, IA 50028"	641-227-3231	641-831-6143	jstruthers@heartlandcoop.com	Contact
+IA	Growmark - RETAIL	Agriland FS	Growmark		John Knobloch	General Mgr	"421 N. 10th Street, Winterset, IA, 50273"	(515) 462-5353		jknobloch@agrilandfs.com	Contact
+IA	OTHER	Heartland Coop.	"Nutrien, Winfield, Rosen's"		Larry Hansen	Location Manager	"509 A Ave, Haverhill, IA 50120"	641-473-2640	641-751-9049	lhansen@heartlandcoop.com	Contact
+NE	HELENA	HELENA - RETAIL	Helena		Benjie Scholl	Branch Mgr.	"5th & Wilson St., Falls City, NE 68355"	402-379-2910	402-245-7212	schollb@helenaagri.com	Contact
+IL	OTHER	Brandt			Brian Armitage	Plant Manager	"601 IL Rt. 10, Lincold, IL"		217-735-2571	brian.armitage@brandt.co	Contact
+NE	HELENA	HELENA - RETAIL	Helena		Matt Neujahr	Branch Mgr.	"700 E. Eisenhower Ave., Norfolk, NE 68701"	402-379-2910	402-641-8246	neujahrm@helenaagri.com	Contact
+NE	NUTRIEN	NUTRIEN - RETAIL	Nutrien		Mike Monke	Location Mgr.	"70098 Co., Rd. 15, Arlington, NE 68002"	402-478-4153	402-533-3754	mike.monke@nutrien.com	Contact
+NE	HELENA	HELENA - RETAIL	Helena		David Tarin	Branch Mgr.	"779 Co. Rd. F., Ashland, NE 68003"	402-944-2139	531-358-0494	tarind@helenaagri.com	Contact
+IL	NUTRIEN - RETAIL		Nutrien		Brian Williams	Sales Manager	"7847 IL 1, West Union, IL 62477"		217-822-8347		Contact
+IL	Growmark		Growmark		Steve Westrich	Area Sales Mgr.	"8681 Valley View Rd., Marion, IL 62959"		618-527-9111	swestrich@growmark.com	Contact
+NE	HELENA	HELENA - RETAIL	Helena		James Lynn	Seed  Mgr.	"900 N. Charde Ave., Oakland, NE 68045"		531-212-0470	lynnja@helenaagri.com	Contact
+NE	HELENA	HELENA - RETAIL	Helena		Jarvis Quill	Branch Mgr.	"900 N. Charde Ave., Oakland, NE 68045"	402-685-6206	402-360-2436	quillj@helenaagri.com	Contact
+NE	HELENA	HELENA - RETAIL	Helena		Spencer Breckenridge	Sales Rep.	"900 N. Charde Ave., Oakland, NE 68045"		402-943-6892	breckenkridges@helenaagri.com	Contact
+IL	HELENA - RETAIL		Helena		Randy Stephens	Sales Manager	"9666 Angling Rd., Martinsville, IL 62441"	217-382-4241		stevensr@helenaagri.com	Contact
+NE	OTHER	Heartland Coop	"Nutrien, Winfield, Rosen's"		Eric Finch	Regional Operations Manager	All of NE			efinch@heartlandcoop.com	Contact
+NE	OTHER	Heartland Coop	"Nutrien, Winfield, Rosen's"		Shawn Bissell	Grain Superintendent / Ops	"Howe/Auburn, NE"			sbissell@heartlandcoop.com	Contact
+NE	OTHER	Heartland Coop	"Nutrien, Winfield, Rosen's"		Jeff Linder	Location Manager / Agronomy Lead	"Nebraska City, NE"			jlinden@heartlandcoop.com	Contact
+IL	OTHER	Heartland Ag Inc.	KOVA		Jim Wiley	Sales Rep.	"P.O. Box 296 500 NE 15th St., Casey, IL"		217-343-6311	jwiley@joink.com	Contact
+IL	Growmark	Conserve FS	Growmark		Adam Day	"Agron. Sales & Mkt, Mgr."	"PO Box 1550, 1110 McConnell Rd., Woodstock, IL 60098"	815-334-5931	815-529-1435	aday@conservfs.com	Contact
+IL	OTHER	"United Prairie, LLC"	Winfield		Ben Rawlins	Operations Mgr.	"PO Box Q, 929  Co. Rd. 700 N., Tolono, IL 61882"	217-485-6000	217-841-5340	brawlins@unitedprairie.com	Contact
+IL	OTHER	"United Prairie, LLC"	Winfield		Greg Cahill	Location Mgr.	"PO Box Q, 929  Co. Rd. 700 N., Tolono, IL 61883"	217-485-6000	217-480-7142	gcahill@unitedprairie.com	Contact
+IL	OTHER	"United Prairie, LLC"	Winfield		Aaron Grote	GIS Manager	"PO Box Q, 929  Co. Rd. 700 N., Tolono, IL 61884"	217-485-6000	217-841-5337	agrote@unitedprairie.com	Contact
+IL	OTHER	"United Prairie, LLC"	Winfield		Adam Hoerner	Sales Agronomist	"PO Box Q, 929  Co. Rd. 700 N., Tolono, IL 61885"	217-485-6000	309-212-8439	ahoerner@unitedprairie.com	Contact
+IL	OTHER	Herrin			Greg Hooten	Fert./Chem.	"Rochester, IL"	217-498-7851	217-273-6230	ghooten78@gmail.com	Contact
+IL	OTHER	URSA Farmers Coop		Truman Phillips		General Mgr.	"1 Water St., Warsaw, IL 62379"		217-242-9480	tphillips@ursacoop.com	Contact
+MN	OTHER	Meadowland Famers Coop.	"Helena, Nutrien, Winfield"	Ralph Price		Agronomy Mgr.	"101 1st Ave. E., Lamberton, MN 56152"	507-752-7352	507-221-0321	rprice@mfcoop.us	Contact
+IL	HELENA - RETAIL		Helena	Greg Clark		AGRIntelligence Argonomist	"107 S. County Rd I, Montfort, WI 53569"		515-669-1029	clarkg@helenaagri.com	Contact
+IA	OTHER	FCA Vision Ag	"Nutrien, Winfield"	Ellie Bell		Mkting Mgr.	"110 S, Keokuk Washington Rd., Keota, IA 52248"	641-636-3748		ebell@keotafarmerscoop.com	Contact
+NE	HELENA	HELENA - RETAIL	Helena	Lorin Krieger		AGRIntelligence Product Mgr. (East)	"11120 Cottonwood Dr., O'Neill, NE 68763"		402-741-2464	krieger@helenaagri.com	Contact
+IA	NUTRIEN - RETAIL	NUTRIEN-IA	Nutrien	Robb Kittsman		C. IA Division Mgr.	"11236 Aurora Ave., Urbandale, IA 50322"		563-543-7398	robb.kitzman@nutrien.com	Contact
+SD	OTHER	AgLand Coop		Todd Kludt		VP Agronomy	"115 S. 1st St., Parkston, SD 57366"		605-928-3381	todd@aglandsd.com	Contact
+IL	HELENA - RETAIL		Helena	Aaron Webster		North Central Division Mgr.	"11711 N. Pennsylvania St., Ste 270,  Carmel, IN 46032"	317-815-6370	859-242-0683	ebstera@helenaagri.com	Contact
+IA	Growmark - RETAIL	Three Rivers FS	Growmark	Chris Salrin			1200 Field of Dreams Way Dyersville IA 52040			csalrin@threeriversfs.com	Contact
+IA	OTHER	Heartland Coop.	"Nutrien, Winfield, Rosen's"	Craig Orr		Director Market Development	"13733 University Ave, Clive, IA 50325"	515-225-1334	515-321-2416	corr@heartlandcoop.com	Contact
+IA	OTHER	Heartland Coop.	"Nutrien, Winfield, Rosen's"	Dave Coppess		VP Sales & Marketing	"13733 University Ave, Clive, IA 50325"	515-225-1334	515-314-1414	dcoppess@heartlandcoop.com	Contact
+IA	OTHER	Heartland Coop.	"Nutrien, Winfield, Rosen's"	Monte Van Wyk		Dir. of Agron.	"13733 University Ave, Clive, IA 50325"	515-225-1334	515-975-6154	mvanwyk@heartlandcoop.com	Contact
+NE	OTHER	"HiWay 75 Ag, LLC"	Nutrien	Brett Kazemba		Co-Owner	"1426 Hwy. 75, Tekamah, NE 68061"	402-870-0278		brettkazemba@hwy75.net	Contact
+IL	HELENA - RETAIL		Helena	Joel Mattingly		NCD South - AGRIntelligence Agronomist	"1572  Oak Park Dr., Owensboro, KY 42301"		270-302-5015	mattinglyij@helenaagri.com	Contact
+IL	Growmark	Heritage FS	Growmark	Jason Wesslund		Area Manager	"1643 N. US Hwy 45, Gilman, IL 60938"	815-707-7020	815-383-8314	jwesslund@heritagefs.com	Contact
+IL	HELENA - RETAIL		Helena	Aaron Siebeneck		NCD North - AGRIntelligence Info. Spec.	"16851 Rd. J, Ottawa, OH 45875"		419-890-2397	asiebenecka@helenaagri.com	Contact
+IL	OTHER	The EQUITY	Winfield	John Babcock		Sales Manager	"16990 N 2nd St, Marshall, IL 62441"	217-826-6331	217-822-0015		Contact
+IL	Growmark	Remote	Growmark	Barry Soliday		Agronomy Sales Manager	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		217-871-1662	bsoliday@growmark.com	Contact
+IL	Growmark	Remote	Growmark	Brett Isley		Agronomy Sales Manager	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		217-248-5992	bisley@growmark.com	Contact
+KY	Growmark	Remote	Growmark	Eric Dickerson		Agronomy Sales Manager	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		502-558-3195	edickerson@growmark.com	Contact
+IL	Growmark	Remote	Growmark	Jason Boehler		Agronomy Sales Manager	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		217-299-5515	jasboehler@growmark.com	Contact
+IL	Growmark	Remote	Growmark	Jonathan Perkins		Agronomy Sales Manager	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		217-690-0509	joperkins@growmark.com	Contact
+OH	Growmark	Remote	Growmark	Linnae Sproul		Agronomy Sales Manager	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		419-574-8107	lSproul@growmark.com	Contact
+OH	Growmark	Remote	Growmark	Ryan Hesterman		Agronomy Sales Manager	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		419-579-0481	rhesterman@growmark.com	Contact
+IL	Growmark	Remote	Growmark	Sam Hilgerson		Agronomy Sales Manager	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		563-329-0009	samhilgerson@growmark.com	Contact
+IL	Growmark	Remote	Growmark	Trent Schuckerbrock		Agronomy Sales Manager	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		309-532-9846	tschuckenbrock@growmark.com	Contact
+IL	Growmark	Sunrise FS	Growmark	Ross Barker		Crop Specialist	"20735 IL Rt. 125, Virginia, IL 62691"	217-204-7418		rbarker@sunrise-fs.com	Contact
+IA	HELENA - RETAIL	HELENA-IA	Helena	Matt Boyer		AGRIntelligence Argonomist	"209 Agustra Fr., Mason Cist, IA 50401"		515-267-0530	boyerm@helenaagri.com	Contact
+IA	OTHER	Farm Service Cooperative (FSC)	"Winfield, Rosen's"	Tyler Reimers		Agron. Div. Mgr.	"2308 Pine St., Harlan, IA 51537"	712-755-3185		tylerreimers@fscoop.com	Contact
+MN	OTHER	Central Farm Services		Tristan Wilmes		VP Agronomy	"233 W. Ciro St., Truman, MN 56088"	507-776-2831	507-621-0243	twilmes@cfs.com	Contact
+SD	CHS	CHS - Brandon	CHS	Tony Van Overscheide		Agronomy Dept. Mgr.	"26027 482nd Ave., Brandon, SD 57005"		605-582-2415	tony.vanoverscheide@chsinc.com	Contact
+IA	OTHER	NEW Cooperative	Winfield	Shan Jaeshke		Agronomy Mgr.	"2626 1st Ave. South, Ft. Dodge, IA 50501"			sjaeshke@newcoop.com	Contact
+MN	OTHER	Ag Partners		Dan Stamschror		Agronomy Dept. Mgr.	"301 S. Broadway St., Goodhue, MN"	651-923-4496	651-764-3095	dans@agpartners.net	Contact
+SD	OTHER	Southeast Farmers Coop	Winfield	Josh Adams		Agron. Mgr.	"31303 471st Ave., Burbank, SD 57010"		605-253-6150	j.adams@southeastfarmers.com	Contact
+NE	HELENA	HELENA - RETAIL	Helena	Keith Mach		AGRIntelligence Argonomist (East)	"3221 Weaver Ln., Lincoln, NE 68506"		402-300-0437	machk@helenaagri.com	Contact
+NE	OTHER	Frontier Coop	Winfield	Dave Reese		VP of Agronomy	"3333 Landmark Cir.,Lincoln, NE 68504"	402-937-1800	402-209-0855	dave.reese@frontiercooperative.com	Contact
+NE	OTHER	Frontier Coop	Winfield	Jason Penlerick		CP & Seed Procurement Mgr.	"3334 Landmark Cir.,Lincoln, NE 68504"	402-937-8052	402-480-0113	jason.penlerick@frontiercooperative.com	Contact
+IL	OTHER	B&D Chemical		Brandon Grubbs		Owner	"33755 E. 1700 N. Rd., Cullum, IL 60929"		815-674-6477	banddchemical@yahoo.com	Contact
+MN	NUTRIEN	NUTRIEN-RETAIL	Nutrien	Tom Kellen		Area Mgr.	"44107 Okabena Rd., Lakefield, MN 56150"	507-662-5442	507-360-5621	tom.kellen@nutrien.com	Contact
+IA	OTHER	NEW Cooperative	Winfield	Colby Kraninger		Agronomist	"4498 Works Rd., Emmetsburg, IA 50536"		515-341-6717	ckraninger@newcoop.com	Contact
+NE	HELENA	HELENA - RETAIL	Helena	Andy Smarsh		West Central Division Mgr. (incl. NE)	"4546 Corporate Dri, Ste 170, West Des Moines, IA 50266"	515-309-3515	316-640-3248	smarsha@helenaagri.com	Contact
+IA	HELENA - RETAIL	HELENA-IA	Helena	Scott Fischer		South Sales Mgr.	"4547 Corporate Dri, Ste 170, West Des Moines, IA 50266"	515-309-3483	515-291-7601	fischerscott@helenaagri.com	Contact
+IL	HELENA - RETAIL		Helena	Dustin Smith		East Sales Manager	"4547 Corporate Drive, Ste 170, West Des Moines, IA 50266"		360-223-5463	smithd@helenaagri.com	Contact
+IL	Growmark	Heritage FS	Growmark	Phil Tjardes		Location Mgr.	"472 E. St. Rt. 54, Onarga, IL 60955"	815-268-4030	815-383-0003	philt@heritagefs.com	Contact
+NE	OTHER	Redstar Fertilizer	"IAP, Helena"	Ryan Mullenhoff		CEO	"48303 115 Ave., Leigh, NE 68643"		402-936-5166	ryan@redstarne.com	Contact
+NE	HELENA	HELENA - RETAIL	Helena	Shannon Harney		Sales Manager (East)	"503 N. Davis Ave., Oakland, NE 68045"		402-380-1208	harneys@helenaagri.com	Contact
+MN	OTHER	Western Consolidated Coop.	"Nutrien, Rosen's"	Scott Mattocks		Asst. Agron. Mgr.	"521 Co. Rd.. 9, Holloway, MN 56249"	320-394-2171	320-288-3279	scott.mattocks@west-con.com	Contact
+IA	Growmark - RETAIL	Growmark REP	Growmark	Jason Schnell		Area Sales Mgr.	"5636 E. 108 St. S., Sully, IA 50251"		641-521-7064	jschnell@growmark.com	Contact
+IL	Growmark	Heritage FS	Growmark	Danny Diemers		Crop Specialist	"596 S. 12000W Rd., Herscher, IL 60941"				Contact
+IL	Growmark	Heritage FS	Growmark	Darrin Schumacher		Liq. Fuel Del.	"597 S. 12000W Rd., Herscher, IL 60941"	815-426-6556	815-378-3418	dschumacher@heritagefs.com	Contact
+IL	HELENA - RETAIL		Helena	Joel McCormick		AIGRIntelligence Product Mgr.	"600 N. Fairground Way, elmwood, IL 61529"	515-267-0530	309-645-5190	mccormickj@helenaagri.com	Contact
+NE	OTHER	Ag Valley Coop	"Winfield, Helena"	Kirk Nielsen		Agron. Dept. Mgr.	"601 Main St., Arapahoe, NE 68922"	800-228-1352	308-962-4589	kmnielsen@agvalley.com	Contact
+NE	OTHER	Midwest Service Inc.	"Winfield, Helena"	Jason Hansen		Head of Agron/Seed	"649 Hwy 75, Tekamah, NE 68061"	402-374-2275	402-870-2231	jasonhansenmws@gmail.com	Contact
+MN	OTHER	Wheaton Dumont Ag	"Nutrien, Rosen's"	Kevin Grimes		Agronomy Mgr.	"6587 US Hwy 75, Wheaton, MN 56296"	320-563-8152	320-808-4938	kevin.grimes@wdcoop.com	Contact
+MN	CHS - RETAIL	CHS - Rochester		Aaron Ulland		Sales Mgr.	"73057 MN-16, Grand Meadow, MN 55936"	507-289-4086	507-226-5871		Contact
+IL	Rosen's - RETAIL	Rosen's - RETAIL		Shawn Clapp		VP Plant Nutrition	"763 N. 2850 East Rd., Leroy, IL 61752"		309-261-1378	sclapp@riw2000.com	Contact
+NE	CHS	CHS - RETAIL	CHS	Erik Haglund		Agron. Sales Mgr.	"809 Broadway St., Wausa, NE 68786"	402-584-2272		erik.haglund@chsinc.com	Contact
+SD	OTHER	AgWrx	Winfield	Wade Goens		Agron. Mgr.	"812 20th Ave. SW, Watertown, SD 57201"	605-886-8333	606-695-3986	wgoens@agwrxcoop.com	Contact
+IL	HELENA - RETAIL		Helena	Kyle Krieger		NCD South - AGRIntelligence Info. Spec.	"8314 Cox Rd. N, Mt. Vernon, IN 47620"		270-231-4984	kriegerk@helenaagri.com	Contact
+NE	OTHER	Farmers Pride Coop.	Winfield	Bryan Hoffman		Agron. Dept. Mgr.	"83755 S. Hwy. 121, Battle Creek, NE 68715"	402-675-2375		bhoffman@farmerspride.com	Contact
+IA	OTHER	Cooperative Farmers Elevator (CFE)	Winfield	Dan Jacobsma		Agronomy Manager	"920 Main St, Ocheyedan, Iowa, 51354"	712-758-3636	712-330-6144	djacobsma@coopfe.com	Contact
+NE	OTHER	O'Hanlon Seed & Irrigation		Dustin O'Hanlon		Owner	"921 W. 7th, Lexington, NE 68850"	308-324-4567	308-325-7987	dustin.ohanlon@gmail.com	Contact
+IL	Growmark	Illini FS	Growmark	Mark Dowell		Cert. Crop Spec.	"998 N. St. Rt. 49, Newman, IL 61942"	217-837-2051	217-497-2477	mdowell@illinifs.com	Contact
+IL	Growmark	Illini FS	Growmark	Nellie Cox		Loc. Admin.	"999 N. St. Rt. 49, Newman, IL 61942"	217-837-2051	217-280-0708	ncox@illinifs.com	Contact
+MN	HELENA	West-Con Agronomy	"Helena, Nutrien"	Brian Fick		Area Agronomist	"Luverne, MN 56156"	507-283-2053	507-220-2525	fickfive@gmail.com	Contact
+IA	HELENA - RETAIL	HELENA-IA	Helena	Greg Besch		AGRIntelligence Product Mgr.	"P.O. Box 413, Grimes, IA 50111"		515-460-4142	beschg@helenaagri.com	Contact
+IL	OTHER	B&D Chemical		Bill Houck		Sales Agron.	"PO Box 191, Cullum, IL 60929"	815-304-6687	636-856-3400	banddchemical@yahoo.com	Contact
+IL	OTHER	"United Prairie, LLC"	Winfield	Curt Miller		General Mgr.	"PO Box Q, 929  Co. Rd. 700 N., Tolono, IL 61880"	217-485-6000	217-343-6324	cmiller@unitedprairie.com	Contact
+IL	OTHER	"United Prairie, LLC"	Winfield	Todd Shunk		Sales Mgr.	"PO Box Q, 929  Co. Rd. 700 N., Tolono, IL 61881"	217-485-6000	217-841-5360	tshunk@unitedprairie.com	Contact
+IA	OTHER	"FCS, Inc"	"Winfield, Nutrien"	Ben VanBeek		Agronomy Mgr.	"Sanborn, IA"	712-722-2671	712-729-3205	ben@farmerscoopsociety.com	Contact
+IA	OTHER	"FCS, Inc"	"Winfield, Nutrien"	Kris Norgaard		Sr. Dir. Agron.	"Sioux Center, IA"	712-722-2671		kris@farmerscoopsociety.com	Contact
+IL	HELENA - RETAIL		Helena	Matt Heldt		NCD South - Area Sales Mgr.			217-653-0465	heldtm@helenaagri.com	Contact
+IL	HELENA - RETAIL		Helena	Matthew LIkens		NCD North - Area Sales Mgr.			317-294-4534	likensm@helenaagri.com	Contact
+IA	Growmark - RETAIL	Three Rivers FS	Growmark		Joe Vorwald		18179 Olde Hiway Road Centralia IA 52068			jvorwald@threeriversfs.com	Contact
+IA	OTHER	Heartland Coop.	"Nutrien, Winfield, Rosen's"		Brian Tomasek	Location Manager	"501 Front St, Neola, IA 51559"	712-485-8080	712-355-4321	btomasek@heartlandcoop.com	Contact
+SD	OTHER	AgWrx	Winfield	Wade Goens		Agron. Mgr.	"812 20th Ave. SW, Watertown, SD 57201"	605-886-8333	606-695-3986	wgoens@agwrxcoop.com	Contact
+SD	OTHER	Southeast Farmers Coop	Winfield	Josh Adams		Agron. Mgr.	"31303 471st Ave., Burbank, SD 57010"		605-253-6150	j.adams@southeastfarmers.com	Contact
+SD	OTHER	Mustang Seeds	Winfield		Jeff Mortimer	Seed Advisor Lead	"1021 SW 10th St., PO Box 466, Madison, SD 57042"	605-256-6529	913-335-5474	jmortimer@mustangseeds.com	Contact

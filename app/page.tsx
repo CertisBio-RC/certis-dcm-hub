@@ -1,65 +1,199 @@
-import Image from "next/image";
+import Link from "next/link";
+import { HubShell, SectionCard } from "@/components/hub-shared";
 
-export default function Home() {
+const mainCards = [
+  {
+    href: "/add-contact",
+    title: "Add New Person",
+    description:
+      "Create a new person record and capture company, supplier, and account/location context needed for follow-up.",
+    external: false,
+    disabled: false,
+  },
+  {
+    href: "/add-account", // 🔥 NEW
+    title: "Add New Account / Location",
+    description:
+      "Create a new retail location when no contact is known yet, enabling territory planning and future relationship development.",
+    external: false,
+    disabled: false,
+  },
+  {
+    href: "/search-contacts",
+    title: "Search Existing People",
+    description:
+      "Search across unified people records, then review profiles, timelines, and key relationship details.",
+    external: false,
+    disabled: false,
+  },
+  {
+    href: "/account-dashboard",
+    title: "Commercial Intelligence Hub",
+description:
+  "Review account-level context, linked people, recent activity, and update key commercial account details.",
+    external: false,
+    disabled: false,
+  },
+  {
+    href: "/bulk-interactions",
+    title: "Bulk Import",
+    description:
+      "Paste or upload contact or interaction data to preview, match people, and(or) import multiple records at once.",
+    external: false,
+    disabled: false,
+  },
+];
+
+const otherTools = [
+    {
+    href: "https://certisbio-rc.github.io/certis_agroute_app/",
+    title: "CERTIS AgRoute Database",
+    description:
+      "Launch the routing and channel-location tool for planning account coverage and travel.",
+    external: true,
+    disabled: false,
+  },
+{
+    href: "/notable-quotables",
+    title: "Notable Quotables",
+    description:
+      "Capture field quotes, objections, reactions, and market intelligence with sentiment tagging.",
+    external: false,
+    disabled: false,
+  },
+
+  {
+    href: "#",
+    title: "CERTIS PlotTrack",
+    description:
+      "Reserved space for a future plot and trial tracking tool across row crop programs.",
+    external: false,
+    disabled: true,
+  },
+  {
+    href: "#",
+    title: "CERTIS Performance Risk Calculator",
+    description:
+      "Analyze conditions to understand when CERTIS biologicals are most likely to deliver strong field performance.",
+    external: false,
+    disabled: true,
+  },
+];
+
+function ActiveCard({
+  href,
+  title,
+  description,
+  external = false,
+}: {
+  href: string;
+  title: string;
+  description: string;
+  external?: boolean;
+}) {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <Link
+      href={href}
+      target={external ? "_blank" : undefined}
+      rel={external ? "noopener noreferrer" : undefined}
+      className="group rounded-3xl border border-slate-300 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-500 dark:border-[#35527d] dark:bg-[#0d2147] dark:shadow-[0_8px_22px_rgba(0,0,0,0.14)] dark:hover:border-[#46f0c3]"
+    >
+      <div className="text-[1.35rem] font-extrabold tracking-tight text-slate-900 dark:text-[#ffd84d]">
+        {title}
+      </div>
+
+      <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-[#d3def5]">
+        {description}
+      </p>
+
+      <div className="mt-6 text-sm font-extrabold text-emerald-600 transition group-hover:text-emerald-700 dark:text-[#46f0c3] dark:group-hover:text-[#72ffd2]">
+        Open tool →
+      </div>
+    </Link>
+  );
+}
+
+function DisabledCard({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="relative rounded-3xl border border-slate-300 bg-slate-100 p-6 opacity-70 dark:border-[#35527d] dark:bg-[#0b1d3f]">
+      <div className="absolute right-4 top-4 rounded-full bg-yellow-400 px-3 py-1 text-xs font-extrabold text-slate-900 dark:bg-[#ffd84d] dark:text-[#0b1d3f]">
+        Coming Soon
+      </div>
+
+      <div className="pr-24 text-[1.35rem] font-extrabold tracking-tight text-slate-900 dark:text-[#ffd84d]">
+        {title}
+      </div>
+
+      <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-[#9fb3d9]">
+        {description}
+      </p>
     </div>
+  );
+}
+
+export default function LaunchPage() {
+  return (
+    <HubShell
+      title="Demand Creation Hub"
+      subtitle="Track people, understand account context, and manage interactions across your territory."
+    >
+      <div className="grid gap-6">
+        <SectionCard
+          title="Core CERTIS Tools"
+          description="Primary workflow tools for managing people, accounts, and interactions."
+        >
+          <div className="grid gap-6 md:grid-cols-2">
+            {mainCards.map((card) =>
+              card.disabled ? (
+                <DisabledCard
+                  key={card.title}
+                  title={card.title}
+                  description={card.description}
+                />
+              ) : (
+                <ActiveCard
+                  key={card.title}
+                  href={card.href}
+                  title={card.title}
+                  description={card.description}
+                  external={card.external}
+                />
+              ),
+            )}
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Other CERTIS Tools"
+          description="Supporting tools and future applications outside the core DCM workflow."
+        >
+          <div className="grid gap-6 md:grid-cols-2">
+            {otherTools.map((tool) =>
+              tool.disabled ? (
+                <DisabledCard
+                  key={tool.title}
+                  title={tool.title}
+                  description={tool.description}
+                />
+              ) : (
+                <ActiveCard
+                  key={tool.title}
+                  href={tool.href}
+                  title={tool.title}
+                  description={tool.description}
+                  external={tool.external}
+                />
+              ),
+            )}
+          </div>
+        </SectionCard>
+      </div>
+    </HubShell>
   );
 }

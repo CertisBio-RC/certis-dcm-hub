@@ -1,0 +1,51 @@
+state	national_name	company_name	supplier	corporate_kingpin	regional_kingpin	title	address	office_phone	cell_phone	email	contact_type
+SD	OTHER	AgWrx	Winfield	Wade Goens		Agron. Mgr.	"812 20th Ave. SW, Watertown, SD 57201"	605-886-8333	606-695-3986	wgoens@agwrxcoop.com	Kingpin
+SD	OTHER	Southeast Farmers Coop	Winfield	Josh Adams		Agron. Mgr.	"31303 471st Ave., Burbank, SD 57010"		605-253-6150	j.adams@southeastfarmers.com	Kingpin
+SD	OTHER	Mustang Seeds	Winfield		Jeff Mortimer	Seed Advisor Lead	"1021 SW 10th St., PO Box 466, Madison, SD 57042"	605-256-6529	913-335-5474	jmortimer@mustangseeds.com	Kingpin
+SD	OTHER	Agtegra	"Winfield, Rosen's"	Aaron Rogers		"Proprietary
+ Product MGR"	"? Brookings, SD"		605-350-3821	aaron.rogers@agtegra.com	Kingpin
+NE	Rosen's	Rosen's - RETAIL	Rosen's		Jeremiah Curry	Regional Agronomist			712-253-3452	jcurry@riw2000.com	Kingpin
+NE	OTHER	Central Farmers Coop.		Jeff Schmiesing		Agron. Dept. Mgr.	"100 N Center St., Tilden, NE 68781"	605-940-7665	507-330-3418	jschmiesing@cfc4ag.com	Kingpin
+IA	OTHER	Cooperative Farmers Elevator (CFE)	Winfield	Jeff Blauwet		Agron. Tech. Specialist	"101 Main St., Doon, IA 51235"	712-758-3636	712-470-1416	jblauwet@coopfe.com	Kingpin
+IA	OTHER	Landus Coop.	IAP	Scott Ahrenholz		Tech. Sales Mgr.	"1095 T. Ave., Boone, IA 50036"		515-686-0850	scott.ahrenholtz@landus.ag	Kingpin
+IA	OTHER	Landus Coop.	IAP	Wade Kent		Acre Edge Mgr.	"1095 T. Ave., Boone, IA 50036"		515-341-4247	wade.kent@@conduit.ag	Kingpin
+NE	OTHER	Country Partners Coop.	Winfield	Pete Cullan		VP of Agronomy	"120 8th St., Gothenburg, NE 69138"	308-537-7141	308-530-5050	pcullan@countrypartnerscoop.com	Kingpin
+IA	OTHER	Hull Coop	Winfield		Lonnie Egdorf	Agronomy Sales	"1206 Railroad St, Hull, Iowa 51239"	712-439-2831	712-441-1185	lonnie.egdorf@hullcoop.com	Kingpin
+IA	OTHER	Hull Coop	Winfield	Peter Westra		Agronomy Dept. Mgr.	"1207 Railroad St, Hull, Iowa 51239"	712-439-2832	712-470-0994	peter.westra@hullcoop.com	Kingpin
+IA	NUTRIEN	NUTRIEN-IA	Nutrien		Joel Nelson	Agronomist	"1215 S. Center Street, Wall Lake, IA 51466"		319-551-8753	joel.nelson@nutrien.com	Kingpin
+MN	CHS	CHS - Rochester			Gary Schmiesing	Agronomist	"135 W. Front St., Claremont, MN 55924"	507-289-4086	507-330-3418	gary.schmiesing@chsinc.com	Kingpin
+NE	OTHER	Central Valley Ag Coop.	Winfield		Korbin Kudera	Research Agron.	"1414 E. Ridge Road, Waco, NE 68460"	402-728-5252	402-270-2909	korbin.kudera@cvacoop.com	Kingpin
+IA	OTHER	Farm Service Cooperative (FSC)	"Winfield, Rosen's"		James Klein	Agron. Mgr.	1421 HWY 44 Harlan IA 51537	712-755-3185	712-571-0349	jamesklein@fscoop.com	Kingpin
+NE	OTHER	"HiWay 75 Ag, LLC"	Nutrien		Dash Cameron	Operations Mgr.	"1426 Hwy. 75, Tekamah, NE 68061"	402-870-0278	402-936-5166	dashcameron@hwy75.net	Kingpin
+IA	Growmark	Agvantage FS	Growmark		Matt Kruse	General Mgr	"1600 8th Street SW
+Waverly, Iowa 50677"	(319) 483-4900		mkruse@agvantagefs.com	Kingpin
+IL	Growmark	Remote	Growmark	Adam Gooding		"Agron. Sales & Mkt, Mgr."	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		309-445-3870	agooding@growmark.com	Kingpin
+IL	Growmark	Remote	Growmark	Eric Mowen		Regional Product Mgr.	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		309-403-4220	emowen@growmark.com	Kingpin
+IL	Growmark	Remote	Growmark	Patrick Lind		Agronomy Sales Manager	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		815-656-0730	plind@growmark.com	Kingpin
+IN	Growmark	Remote	Growmark	Sam Hennessee		Agronomy Sales Manager	"1705 Towanda Avenue in Bloomington, Illinois, 61701"			shennessee@growmark.com	Kingpin
+NE	OTHER	Hi-Line Cooperative	Nutrien	Matt Hasenauer		CEO/Gen. Mgr.	"203 S. Perkins Ave., Elsie, NE 69123"	308-352-2800			Kingpin
+NE	OTHER	Aurora Coop.	Winfield		Lucas Birch	Agron. Sales Rep.	"2225 Q St., Aurora, NE 68818"	402-694-2106	308-746-2807	burchla13@gmail.com	Kingpin
+IA	Growmark	Agvantage FS	Growmark		Brett Flaharty	Crop Specialist	"2326 Benson Shady Grove Ave., Jesup, IA 50648"	319-827-3531	319-839-7580	bflaharty@agvantagefs.com	Kingpin
+NE	OTHER	"Cooperative Producers, Inc."	"Rosen's, Winfield, IAP"	Mike Battin		VP of Agronomy	"265 N. Showboat Blvd. Hastings, NE 68901"	402-463-5148	785-421-8327	mbattin@cpicoop.com	Kingpin
+NE	OTHER	"Cooperative Producers, Inc."	"Rosen's, Winfield, IAP"	Kevin Hoffschneider		Procurement Strategy & Prod Mgr.	"265 N. Showboat Blvd. P.O. Box 1008, Hastings, NE 68901"	402-744-0090	308-750-7912	khoffschneider@cpicoop.com	Kingpin
+NE	OTHER	"Cooperative Producers, Inc."	"Rosen's, Winfield, IAP"	Chris Wagner			"266 N. Showboat Blvd. P.O. Box 1008, Hastings, NE 68901"	402-744-7870	402-640-8344	cwagner@cpicoop.com	Kingpin
+NE	OTHER	Central Valley Ag Coop.	Winfield	Cary Skibinski		Dir. Spec. Prod.	"2803 N. Nebraska Ave., York, NE 68467"	402-362-8454	402-710-0598	cary.skibinski@cvacoop.com	Kingpin
+NE	OTHER	Frenchman Valley Coop.	Winfield	Jeff Wessels		VP of Agronomy	"32946 Nebraska 23, Grant, NE 69140"		308-655-0638	jrwessels@fvcoop.net	Kingpin
+NE	OTHER	Frenchman Valley Coop.	Winfield		Bryan Kopriva	Agron Asst.	"32946 Nebraska 23, Grant, NE 69140"		308-882-8425	bkopriva@fvcoop.net	Kingpin
+NE	OTHER	Frenchman Valley Coop.	Winfield		Luke Korf	Agron./Prod. Advisor	"32946 Nebraska 23, Grant, NE 69140"		308-353-7838	lkorf@fvcoop.net	Kingpin
+SD	OTHER	Agtegra	"Winfield, Rosen's"		Jason White	Branch Mgr.	"39758 SD Hwy. 34, Woonsocket, SD 57385"		605-846-1166	jason.white@agtegra.com	Kingpin
+IA	HELENA	HELENA-IA	Helena	John Walter		MidWest Division Mgr.	"4546 Corporate Dri, Ste 170, West Des Moines, IA 50266"	515-309-3461	515-650-7986	walterj@helenaagri.com	Kingpin
+NE	OTHER	Redstar Fertilizer	"IAP, Helena"	Tom Stanton		Head of REDSTAR BRANDED	"48303 115 Ave., Leigh, NE 68643"	844-502-9368	712-301-2549	tomstanton@redstarfertilizer.com	Kingpin
+IA	OTHER	Asmus Farm Supply	"Nutrien, Winfield"	Amy Asmus		Owner	"50245 40th Ave, Rake, IA 50465"	641-566-3672	641-590-1658	amy@afschem.com	Kingpin
+IA	OTHER	Asmus Farm Supply	"Nutrien, Winfield"	Harlan Asmus		Owner	"50245 40th Ave, Rake, IA 50465"	641-566-3658		harlan@afschem.com	Kingpin
+IA	OTHER	Asmus Farm Supply	"Nutrien, Winfield"		Cody Wertjes	Department Mgr.	"50245 40th Ave, Rake, IA 50465"	641-566-3658		cody@afschem.com	Kingpin
+SD	HELENA	HELENA - RETAIL	Helena		Nick Lentz	Branch Mgr.	"514 SD Hwy. 37, Tripp, SD 57376"	605-857-5047	605-870-0520	lentzn@helenaagri.com	Kingpin
+MN	Rosen's	ROSEN'S - HQ		Steve Koziolek		Market Mgr.	"800 Mayflower Ct., Northfield, MN 55057"	507-664-0520	612-240-5840	skoziolek@riw2000.com	Kingpin
+SD	OTHER	Agtegra	"Winfield, Rosen's"	Brad Ruden		Technical Mgr.	"908 Lamont St., South Aberdeen, SD 57401"	(605) 651-4159	(605) 725-8331	brad.ruden@agtegra.com	Kingpin
+SD	OTHER	Agtegra	"Winfield, Rosen's"	Brett Harrison		Head of CP	"908 Lamont St., South Aberdeen, SD 57401"	605-570-0772	605-225-5500	brett.harrison@agtegra.com	Kingpin
+SD	OTHER	Agtegra		Ryan Schuchhardt		Head. Of Sales Agronomy	"908 Lamont St., South Aberdeen, SD 57401"		(605)-350-3156	ryan.schuchhardt@agtegra.com	Kingpin
+NE	Rosen's	Remote	Rosen's	Dave Clemans		Area Mgr.	"9700 Wildfire Circle, Lincoln, NE 68512"	402-423-3303	308-380-1993	dclemans@riw2000.com	Kingpin
+IA	Rosen's	Remote	Rosen's		Adam Baker	Regional Sales Manager			641--525-2503	abaker@riw2000.com	Kingpin
+IL	Growmark	Remote	Growmark		Patrick Lind	Area Sales Mgr.	"22 N. Mernitz Ave., Freeport, IL 61032"		815-656-0730	plind@growmark.com	Kingpin
+IL	Growmark	Remote	Growmark	Ryne Brewer		Agronomy Sales Manager	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		309-838-7247	rbrewer@growmark.com	Kingpin
+IL	Growmark	Remote	Growmark	Samantha Schmidgal		"Agron. Sales & Mkt, Mgr."	"1705 Towanda Avenue in Bloomington, Illinois, 61701"		309-824-3742	saschmidgall@growmark.com	Kingpin
