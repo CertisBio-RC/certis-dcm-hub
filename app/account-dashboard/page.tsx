@@ -39,7 +39,11 @@ type AccountRow = {
 
 type PeopleRow = {
   id: string;
-  state: string | null;
+  account_id: string | null;
+  full_name: string | null;
+  person_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
   national_name: string | null;
   company_name: string | null;
   supplier: string | null;
@@ -47,11 +51,26 @@ type PeopleRow = {
   regional_kingpin: string | null;
   title: string | null;
   address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
   office_phone: string | null;
   cell_phone: string | null;
   email: string | null;
   contact_type: string | null;
   created_at: string | null;
+  updated_at: string | null;
+};
+
+type LegacyLinkRow = {
+  id: string;
+  email: string | null;
+  corporate_kingpin: string | null;
+  regional_kingpin: string | null;
+  company_name: string | null;
+  national_name: string | null;
+  supplier: string | null;
+  state: string | null;
 };
 
 type InteractionRow = {
@@ -66,10 +85,6 @@ type InteractionRow = {
   follow_up_date: string | null;
   created_at: string | null;
   stage: string | null;
-};
-
-type LinkedPerson = PeopleRow & {
-  source_table: "contacts" | "kingpins";
 };
 
 type AccountEditForm = {
@@ -100,7 +115,10 @@ const ACCOUNT_SELECT =
   "id, source_system, source_file, source_sheet, source_row_number, account_key, long_name, retailer, name, address, city, state, zip, category, suppliers, is_active, created_at, updated_at, office_phone, row_crop_relevance";
 
 const PEOPLE_SELECT =
-  "id, state, national_name, company_name, supplier, corporate_kingpin, regional_kingpin, title, address, office_phone, cell_phone, email, contact_type, created_at";
+  "id, account_id, full_name, person_name, first_name, last_name, national_name, company_name, supplier, corporate_kingpin, regional_kingpin, title, address, city, state, zip, office_phone, cell_phone, email, contact_type, created_at, updated_at";
+
+const LEGACY_LINK_SELECT =
+  "id, email, corporate_kingpin, regional_kingpin, company_name, national_name, supplier, state";
 
 const INTERACTION_SELECT =
   "id, user_id, contact_id, date, type, summary, details, outcome, follow_up_date, created_at, stage";
@@ -150,13 +168,6 @@ function normalizeForMatch(value: string | null | undefined): string {
     .trim();
 }
 
-function splitSupplierTokens(value: string | null | undefined): string[] {
-  return normalizeValue(value)
-    .split(/[;,]/)
-    .map((item) => normalizeForMatch(item))
-    .filter(Boolean);
-}
-
 function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
   return Array.from(
     new Set(
@@ -165,6 +176,13 @@ function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
         .filter(Boolean),
     ),
   );
+}
+
+function splitSupplierTokens(value: string | null | undefined): string[] {
+  return normalizeValue(value)
+    .split(/[;,]/)
+    .map((item) => normalizeForMatch(item))
+    .filter(Boolean);
 }
 
 function getSignificantWords(value: string | null | undefined): string[] {
@@ -220,6 +238,33 @@ function companyNamesStronglyMatch(
   return false;
 }
 
+function joinedName(
+  firstName: string | null | undefined,
+  lastName: string | null | undefined,
+): string {
+  return normalizeValue(`${normalizeValue(firstName)} ${normalizeValue(lastName)}`.trim());
+}
+
+function getPersonDisplayName(person: PeopleRow): string {
+  return (
+    normalizeValue(person.full_name) ||
+    normalizeValue(person.person_name) ||
+    joinedName(person.first_name, person.last_name) ||
+    normalizeValue(person.regional_kingpin) ||
+    normalizeValue(person.corporate_kingpin) ||
+    normalizeValue(person.email) ||
+    "Unnamed Person"
+  );
+}
+
+function getPersonCompany(person: PeopleRow): string {
+  return (
+    normalizeValue(person.company_name) ||
+    normalizeValue(person.national_name) ||
+    "No company listed"
+  );
+}
+
 function getAccountDisplayName(account: AccountRow | null): string {
   if (!account) return "No account selected";
 
@@ -242,33 +287,12 @@ function getAccountAddress(account: AccountRow | null): string {
   );
 }
 
-function getPersonDisplayName(person: LinkedPerson): string {
-  return (
-    normalizeValue(person.regional_kingpin) ||
-    normalizeValue(person.corporate_kingpin) ||
-    normalizeValue(person.email) ||
-    "Unnamed Person"
-  );
-}
-
-function getPersonCompany(person: LinkedPerson): string {
-  return (
-    normalizeValue(person.company_name) ||
-    normalizeValue(person.national_name) ||
-    "No company listed"
-  );
-}
-
-function searchIncludes(values: Array<string | null | undefined>, query: string): boolean {
-  const normalizedQuery = normalizeForMatch(query);
-  if (!normalizedQuery) return false;
-
-  const haystack = values.map((value) => normalizeForMatch(value)).join(" ");
-  return haystack.includes(normalizedQuery);
-}
-
-function buildPersonSearchFields(person: PeopleRow): Array<string | null | undefined> {
+function buildPeopleSearchFields(person: PeopleRow): Array<string | null | undefined> {
   return [
+    person.full_name,
+    person.person_name,
+    person.first_name,
+    person.last_name,
     person.corporate_kingpin,
     person.regional_kingpin,
     person.company_name,
@@ -284,19 +308,42 @@ function buildPersonSearchFields(person: PeopleRow): Array<string | null | undef
   ];
 }
 
+function searchIncludes(values: Array<string | null | undefined>, query: string): boolean {
+  const normalizedQuery = normalizeForMatch(query);
+  if (!normalizedQuery) return false;
+
+  const haystack = values.map((value) => normalizeForMatch(value)).join(" ");
+  return haystack.includes(normalizedQuery);
+}
+
+function isHeadquartersAccount(account: AccountRow): boolean {
+  const category = normalizeForMatch(account.category);
+  return category.includes("corporate") || category.includes("regional");
+}
+
+function isAgronomyAccount(account: AccountRow): boolean {
+  const category = normalizeForMatch(account.category);
+  if (isHeadquartersAccount(account)) return true;
+  return category.includes("agronomy");
+}
+
 function isLinkedPerson(account: AccountRow, person: PeopleRow): boolean {
+  if (person.account_id && account.id === person.account_id) {
+    return true;
+  }
+
   const accountNames = uniqueNonEmpty([
     account.long_name,
     account.retailer,
     account.name,
   ]);
 
-  const personNames = uniqueNonEmpty([
+  const personCompanies = uniqueNonEmpty([
     person.company_name,
     person.national_name,
   ]);
 
-  if (accountNames.length === 0 || personNames.length === 0) {
+  if (accountNames.length === 0 || personCompanies.length === 0) {
     return false;
   }
 
@@ -310,7 +357,7 @@ function isLinkedPerson(account: AccountRow, person: PeopleRow): boolean {
   }
 
   const strongNameMatch = accountNames.some((accountName) =>
-    personNames.some((personName) =>
+    personCompanies.some((personName) =>
       companyNamesStronglyMatch(accountName, personName),
     ),
   );
@@ -339,18 +386,17 @@ function sortAccounts(a: AccountRow, b: AccountRow): number {
   return getAccountDisplayName(a).localeCompare(getAccountDisplayName(b));
 }
 
-function sortPeople(a: LinkedPerson, b: LinkedPerson): number {
+function sortPeople(a: PeopleRow, b: PeopleRow): number {
   return getPersonDisplayName(a).localeCompare(getPersonDisplayName(b));
 }
 
-function dedupeLinkedPeople(people: LinkedPerson[]): LinkedPerson[] {
+function dedupePeople(people: PeopleRow[]): PeopleRow[] {
   const seen = new Set<string>();
-  const result: LinkedPerson[] = [];
+  const result: PeopleRow[] = [];
 
   for (const person of people) {
-    const key = `${person.source_table}:${person.id}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (seen.has(person.id)) continue;
+    seen.add(person.id);
     result.push(person);
   }
 
@@ -368,18 +414,6 @@ function buildEditForm(account: AccountRow | null): AccountEditForm {
     zip: normalizeValue(account?.zip),
     row_crop_relevance: normalizeValue(account?.row_crop_relevance) || "unknown",
   };
-}
-
-function isHeadquartersAccount(account: AccountRow): boolean {
-  const category = normalizeForMatch(account.category);
-  return category.includes("corporate") || category.includes("regional");
-}
-
-function isAgronomyAccount(account: AccountRow): boolean {
-  const category = normalizeForMatch(account.category);
-
-  if (isHeadquartersAccount(account)) return true;
-  return category.includes("agronomy");
 }
 
 function formatInteractionDate(value: string | null | undefined): string {
@@ -498,21 +532,76 @@ async function fetchAllRows<T>(
       .select(selectClause)
       .range(from, to);
 
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
 
     const chunk = (data ?? []) as T[];
     rows.push(...chunk);
 
-    if (chunk.length < pageSize) {
-      break;
-    }
-
+    if (chunk.length < pageSize) break;
     from += pageSize;
   }
 
   return rows;
+}
+
+function getLegacyNameCandidates(person: PeopleRow): string[] {
+  return uniqueNonEmpty([
+    person.full_name,
+    person.person_name,
+    joinedName(person.first_name, person.last_name),
+    person.corporate_kingpin,
+    person.regional_kingpin,
+  ]);
+}
+
+function matchesLegacyRowToPerson(person: PeopleRow, row: LegacyLinkRow): boolean {
+  const personEmail = normalizeForMatch(person.email);
+  const rowEmail = normalizeForMatch(row.email);
+
+  if (personEmail && rowEmail && personEmail === rowEmail) {
+    return true;
+  }
+
+  const personNames = getLegacyNameCandidates(person);
+  const rowNames = uniqueNonEmpty([row.corporate_kingpin, row.regional_kingpin]);
+
+  if (personNames.length === 0 || rowNames.length === 0) {
+    return false;
+  }
+
+  const stateMatch =
+    !normalizeForMatch(person.state) ||
+    !normalizeForMatch(row.state) ||
+    normalizeForMatch(person.state) === normalizeForMatch(row.state);
+
+  if (!stateMatch) {
+    return false;
+  }
+
+  const nameMatch = personNames.some((personName) =>
+    rowNames.some((rowName) => normalizeForMatch(personName) === normalizeForMatch(rowName)),
+  );
+
+  if (!nameMatch) {
+    return false;
+  }
+
+  const personCompanies = uniqueNonEmpty([person.company_name, person.national_name]);
+  const rowCompanies = uniqueNonEmpty([row.company_name, row.national_name]);
+
+  if (personCompanies.length > 0 && rowCompanies.length > 0) {
+    const companyMatch = personCompanies.some((personCompany) =>
+      rowCompanies.some((rowCompany) =>
+        companyNamesStronglyMatch(personCompany, rowCompany),
+      ),
+    );
+
+    if (!companyMatch) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 export default function CommercialIntelligenceHubPage() {
@@ -527,13 +616,14 @@ export default function CommercialIntelligenceHubPage() {
   });
 
   const [allAccounts, setAllAccounts] = useState<AccountRow[]>([]);
-  const [allContacts, setAllContacts] = useState<PeopleRow[]>([]);
-  const [allKingpins, setAllKingpins] = useState<PeopleRow[]>([]);
+  const [allPeople, setAllPeople] = useState<PeopleRow[]>([]);
+  const [legacyContacts, setLegacyContacts] = useState<LegacyLinkRow[]>([]);
+  const [legacyKingpins, setLegacyKingpins] = useState<LegacyLinkRow[]>([]);
   const [allInteractions, setAllInteractions] = useState<InteractionRow[]>([]);
 
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<AccountRow | null>(null);
-  const [linkedPeople, setLinkedPeople] = useState<LinkedPerson[]>([]);
+  const [linkedPeople, setLinkedPeople] = useState<PeopleRow[]>([]);
   const [linkedInteractions, setLinkedInteractions] = useState<InteractionRow[]>([]);
 
   const [isLoadingBaseData, setIsLoadingBaseData] = useState(true);
@@ -558,8 +648,9 @@ export default function CommercialIntelligenceHubPage() {
           kingpinsCountResponse,
           interactionsCountResponse,
           allAccountsData,
-          allContactsData,
-          allKingpinsData,
+          allPeopleData,
+          legacyContactsData,
+          legacyKingpinsData,
           allInteractionsData,
         ] = await Promise.all([
           supabase.from("accounts").select("*", { count: "exact", head: true }),
@@ -567,8 +658,9 @@ export default function CommercialIntelligenceHubPage() {
           supabase.from("kingpins").select("*", { count: "exact", head: true }),
           supabase.from("interactions").select("*", { count: "exact", head: true }),
           fetchAllRows<AccountRow>(supabase, "accounts", ACCOUNT_SELECT),
-          fetchAllRows<PeopleRow>(supabase, "contacts", PEOPLE_SELECT),
-          fetchAllRows<PeopleRow>(supabase, "kingpins", PEOPLE_SELECT),
+          fetchAllRows<PeopleRow>(supabase, "people", PEOPLE_SELECT),
+          fetchAllRows<LegacyLinkRow>(supabase, "contacts", LEGACY_LINK_SELECT),
+          fetchAllRows<LegacyLinkRow>(supabase, "kingpins", LEGACY_LINK_SELECT),
           fetchAllRows<InteractionRow>(supabase, "interactions", INTERACTION_SELECT),
         ]);
 
@@ -580,8 +672,9 @@ export default function CommercialIntelligenceHubPage() {
         });
 
         setAllAccounts(allAccountsData.sort(sortAccounts));
-        setAllContacts(allContactsData);
-        setAllKingpins(allKingpinsData);
+        setAllPeople(allPeopleData.sort(sortPeople));
+        setLegacyContacts(legacyContactsData);
+        setLegacyKingpins(legacyKingpinsData);
         setAllInteractions(allInteractionsData);
         setIsLoadingBaseData(false);
       } catch (error) {
@@ -600,6 +693,25 @@ export default function CommercialIntelligenceHubPage() {
 
     void loadBaseData();
   }, [supabase]);
+
+  const legacyIdsByPeopleId = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    const legacyRows = [...legacyContacts, ...legacyKingpins];
+
+    allPeople.forEach((person) => {
+      const ids = new Set<string>();
+
+      legacyRows.forEach((row) => {
+        if (matchesLegacyRowToPerson(person, row)) {
+          ids.add(row.id);
+        }
+      });
+
+      map.set(person.id, ids);
+    });
+
+    return map;
+  }, [allPeople, legacyContacts, legacyKingpins]);
 
   useEffect(() => {
     if (isLoadingBaseData) return;
@@ -650,20 +762,9 @@ export default function CommercialIntelligenceHubPage() {
           throw directAccountResponse.error;
         }
 
-        const matchedPeopleFromQuery = [
-          ...allContacts
-            .filter((person) => searchIncludes(buildPersonSearchFields(person), q))
-            .map((person) => ({
-              ...person,
-              source_table: "contacts" as const,
-            })),
-          ...allKingpins
-            .filter((person) => searchIncludes(buildPersonSearchFields(person), q))
-            .map((person) => ({
-              ...person,
-              source_table: "kingpins" as const,
-            })),
-        ];
+        const matchedPeopleFromQuery = allPeople.filter((person) =>
+          searchIncludes(buildPeopleSearchFields(person), q),
+        );
 
         const directAccounts = ((directAccountResponse.data ?? []) as AccountRow[]) ?? [];
         const directMap = new Map(directAccounts.map((account) => [account.id, account]));
@@ -703,47 +804,21 @@ export default function CommercialIntelligenceHubPage() {
           return;
         }
 
-        const contactLinkedByAccount = new Map<string, LinkedPerson[]>();
-        const kingpinLinkedByAccount = new Map<string, LinkedPerson[]>();
-
-        for (const account of filteredAccounts) {
-          contactLinkedByAccount.set(
-            account.id,
-            allContacts
-              .filter((person) => isLinkedPerson(account, person))
-              .map((person) => ({
-                ...person,
-                source_table: "contacts" as const,
-              })),
-          );
-
-          kingpinLinkedByAccount.set(
-            account.id,
-            allKingpins
-              .filter((person) => isLinkedPerson(account, person))
-              .map((person) => ({
-                ...person,
-                source_table: "kingpins" as const,
-              })),
-          );
-        }
-
-        const aggregatedLinkedPeople = dedupeLinkedPeople(
-          filteredAccounts.flatMap((account) => [
-            ...(contactLinkedByAccount.get(account.id) ?? []),
-            ...(kingpinLinkedByAccount.get(account.id) ?? []),
-          ]),
+        const aggregatedLinkedPeople = dedupePeople(
+          filteredAccounts.flatMap((account) =>
+            allPeople.filter((person) => isLinkedPerson(account, person)),
+          ),
         ).sort(sortPeople);
 
-        const aggregatedContactIds = new Set(
-          aggregatedLinkedPeople
-            .filter((person) => person.source_table === "contacts")
-            .map((person) => person.id),
-        );
+        const aggregatedLegacyIds = new Set<string>();
+        aggregatedLinkedPeople.forEach((person) => {
+          const ids = legacyIdsByPeopleId.get(person.id) ?? new Set<string>();
+          ids.forEach((id) => aggregatedLegacyIds.add(id));
+        });
 
         const aggregatedInteractions = allInteractions.filter(
           (interaction) =>
-            !!interaction.contact_id && aggregatedContactIds.has(interaction.contact_id),
+            !!interaction.contact_id && aggregatedLegacyIds.has(interaction.contact_id),
         );
 
         setLinkedPeople(aggregatedLinkedPeople);
@@ -783,9 +858,9 @@ export default function CommercialIntelligenceHubPage() {
   }, [
     query,
     allAccounts,
-    allContacts,
-    allKingpins,
+    allPeople,
     allInteractions,
+    legacyIdsByPeopleId,
     selectedAccount?.id,
     isLoadingBaseData,
     supabase,
@@ -797,6 +872,7 @@ export default function CommercialIntelligenceHubPage() {
   }, [selectedAccount, isEditingAccount]);
 
   const totalLocations = accounts.length;
+
   const totalAgronomyLocations = useMemo(
     () => accounts.filter((account) => isAgronomyAccount(account)).length,
     [accounts],
@@ -807,58 +883,41 @@ export default function CommercialIntelligenceHubPage() {
       ? Math.round((totalAgronomyLocations / totalLocations) * 100)
       : 0;
 
-  const sortedTimelineInteractions = useMemo(() => {
-    return [...linkedInteractions].sort((a, b) => {
-      const aDate = a.date ?? a.created_at ?? "";
-      const bDate = b.date ?? b.created_at ?? "";
-      return bDate.localeCompare(aDate);
-    });
-  }, [linkedInteractions]);
-
-  const mostRecentInteraction = sortedTimelineInteractions[0] ?? null;
-
-  const contactCount = linkedPeople.filter((person) => person.source_table === "contacts").length;
-  const kingpinCount = linkedPeople.filter((person) => person.source_table === "kingpins").length;
-  const otherCount = Math.max(linkedPeople.length - contactCount - kingpinCount, 0);
-
-  const ninetyDaysAgo = useMemo(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 90);
-    return date;
-  }, []);
-
-  const accountLinkedContactIdsById = useMemo(() => {
-    const map = new Map<string, Set<string>>();
+  const peopleByAccountId = useMemo(() => {
+    const map = new Map<string, PeopleRow[]>();
 
     accounts.forEach((account) => {
-      const contactIds = new Set(
-        allContacts
-          .filter((person) => isLinkedPerson(account, person))
-          .map((person) => person.id),
+      map.set(
+        account.id,
+        linkedPeople.filter((person) => isLinkedPerson(account, person)),
       );
-
-      map.set(account.id, contactIds);
     });
 
     return map;
-  }, [accounts, allContacts]);
+  }, [accounts, linkedPeople]);
 
   const interactionsByAccountId = useMemo(() => {
     const map = new Map<string, InteractionRow[]>();
 
     accounts.forEach((account) => {
-      const contactIds = accountLinkedContactIdsById.get(account.id) ?? new Set<string>();
+      const peopleForAccount = peopleByAccountId.get(account.id) ?? [];
+      const legacyIds = new Set<string>();
+
+      peopleForAccount.forEach((person) => {
+        const ids = legacyIdsByPeopleId.get(person.id) ?? new Set<string>();
+        ids.forEach((id) => legacyIds.add(id));
+      });
 
       const accountInteractions = allInteractions.filter(
         (interaction) =>
-          !!interaction.contact_id && contactIds.has(interaction.contact_id),
+          !!interaction.contact_id && legacyIds.has(interaction.contact_id),
       );
 
       map.set(account.id, accountInteractions);
     });
 
     return map;
-  }, [accounts, accountLinkedContactIdsById, allInteractions]);
+  }, [accounts, peopleByAccountId, legacyIdsByPeopleId, allInteractions]);
 
   const locationsContacted = useMemo(() => {
     return accounts.filter((account) => {
@@ -866,6 +925,12 @@ export default function CommercialIntelligenceHubPage() {
       return interactions.length > 0;
     }).length;
   }, [accounts, interactionsByAccountId]);
+
+  const ninetyDaysAgo = useMemo(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 90);
+    return date;
+  }, []);
 
   const activeLocationsLast90 = useMemo(() => {
     return accounts.filter((account) => {
@@ -948,6 +1013,26 @@ export default function CommercialIntelligenceHubPage() {
       ).length,
     [accounts, accountHighestStageById],
   );
+
+  const sortedTimelineInteractions = useMemo(() => {
+    return [...linkedInteractions].sort((a, b) => {
+      const aDate = a.date ?? a.created_at ?? "";
+      const bDate = b.date ?? b.created_at ?? "";
+      return bDate.localeCompare(aDate);
+    });
+  }, [linkedInteractions]);
+
+  const mostRecentInteraction = sortedTimelineInteractions[0] ?? null;
+
+  const contactCount = linkedPeople.filter((person) =>
+    normalizeForMatch(person.contact_type).includes("contact"),
+  ).length;
+
+  const kingpinCount = linkedPeople.filter((person) =>
+    normalizeForMatch(person.contact_type).includes("kingpin"),
+  ).length;
+
+  const otherCount = Math.max(linkedPeople.length - contactCount - kingpinCount, 0);
 
   const handleEditField = (field: keyof AccountEditForm, value: string) => {
     setEditForm((current) => ({
@@ -1140,7 +1225,7 @@ export default function CommercialIntelligenceHubPage() {
           {isLoadingBaseData ? (
             <div className="mt-4">
               <StatusMessage
-                message="Loading account, contact, kingpin, and interaction data..."
+                message="Loading account, people, legacy links, and interaction data..."
                 tone="info"
               />
             </div>
@@ -1297,7 +1382,7 @@ export default function CommercialIntelligenceHubPage() {
           </div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800 xl:col-span-1">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
               <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Total Interactions
               </div>
@@ -1627,7 +1712,7 @@ export default function CommercialIntelligenceHubPage() {
 
         <SectionCard
           title="Linked People"
-          description="Contacts and kingpins associated with the current matched account set, not just the selected location."
+          description="People associated with the current matched account set, using the people table as the primary backbone."
         >
           {linkedPeople.length === 0 ? (
             <StatusMessage
@@ -1638,12 +1723,12 @@ export default function CommercialIntelligenceHubPage() {
             <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-2">
               {linkedPeople.map((person) => (
                 <div
-                  key={`${person.source_table}-${person.id}`}
+                  key={person.id}
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800"
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="text-2xl font-bold">{getPersonDisplayName(person)}</div>
-                    <RecordBadge>{person.contact_type || person.source_table}</RecordBadge>
+                    <RecordBadge>{person.contact_type || "person"}</RecordBadge>
                   </div>
 
                   <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
@@ -1679,9 +1764,15 @@ export default function CommercialIntelligenceHubPage() {
                   <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
                     <span className="font-semibold">Address:</span>{" "}
                     <AddressValueLink
-                      value={person.address}
+                      value={
+                        [person.address, person.city, person.state, person.zip]
+                          .filter(Boolean)
+                          .join(", ") || person.address
+                      }
                       address={person.address}
+                      city={person.city}
                       state={person.state}
+                      zip={person.zip}
                       label={getPersonDisplayName(person)}
                       context={getPersonCompany(person)}
                     />
@@ -1697,9 +1788,9 @@ export default function CommercialIntelligenceHubPage() {
           description="Working space for what this account means commercially and what should happen next."
         >
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-700 dark:bg-slate-800">
-            This page is now positioned as the Commercial Intelligence Hub. Use it to review the
-            account, correct business details in real time, assess the timeline scaffold, and
-            quickly evaluate linked people plus recent activity around the matched account set.
+            This page now uses the people table as the primary backbone for linked-person logic.
+            Legacy contacts and kingpins are still consulted behind the scenes only to bridge older
+            interaction history until that relationship model is fully modernized.
           </div>
         </SectionCard>
       </div>
