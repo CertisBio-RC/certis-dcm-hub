@@ -1342,34 +1342,42 @@ export default function ProfilePage() {
 
       let savedPerson: PersonRecord | null = null;
 
-      if (personRecord?.id) {
-const updatePayload = {
-  ...basePayload,
-  account_id: personRecord.account_id ?? mainAccount?.id ?? null,
-  supplier: personRecord.supplier ?? (cleanText(legacyRecord?.supplier) || null),
-};
+if (personRecord?.id) {
+  const updatePayload = {
+    ...basePayload,
+    account_id: personRecord.account_id ?? mainAccount?.id ?? null,
+    supplier: personRecord.supplier ?? (cleanText(legacyRecord?.supplier) || null),
+  };
 
-        const { data, error: updateError } = await supabase
-          .from("people")
-          .update(updatePayload)
-          .eq("id", personRecord.id)
-          .select("*")
-          .single();
+  const { error: updateError } = await supabase
+    .from("people")
+    .update(updatePayload)
+    .eq("id", personRecord.id);
 
-        if (updateError) throw updateError;
-        savedPerson = data as PersonRecord;
-      } else {
-        const insertPayload = {
-          ...basePayload,
-          account_id: mainAccount?.id ?? null,
-          supplier: cleanText(legacyRecord?.supplier) || null,
-          national_name: cleanText(legacyRecord?.national_name) || null,
-          person_name: cleanText(legacyRecord?.person_name) || null,
-          corporate_kingpin: cleanText(legacyRecord?.corporate_kingpin) || null,
-          regional_kingpin: cleanText(legacyRecord?.regional_kingpin) || null,
-        };
+  if (updateError) throw updateError;
 
-        const { data, error: insertError } = await supabase
+  const { data: refreshedPerson, error: refreshedPersonError } = await supabase
+    .from("people")
+    .select("*")
+    .eq("id", personRecord.id)
+    .maybeSingle();
+
+  if (refreshedPersonError) throw refreshedPersonError;
+  if (!refreshedPerson) {
+    throw new Error("Profile update succeeded, but the refreshed people record could not be reloaded.");
+  }
+
+  savedPerson = refreshedPerson as PersonRecord;
+} else {
+  const insertPayload = {
+    ...basePayload,
+    account_id: mainAccount?.id ?? null,
+    supplier: cleanText(legacyRecord?.supplier) || null,
+    national_name: cleanText(legacyRecord?.national_name) || null,
+    person_name: cleanText(legacyRecord?.person_name) || null,
+    corporate_kingpin: cleanText(legacyRecord?.corporate_kingpin) || null,
+    regional_kingpin: cleanText(legacyRecord?.regional_kingpin) || null,
+  };        const { data, error: insertError } = await supabase
           .from("people")
           .insert(insertPayload)
           .select("*")
