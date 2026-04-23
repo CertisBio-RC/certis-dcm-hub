@@ -83,6 +83,35 @@ type AccountEditForm = {
   row_crop_relevance: string;
 };
 
+const COMMON_BUSINESS_STOPWORDS = new Set([
+  "inc",
+  "llc",
+  "ltd",
+  "co",
+  "company",
+  "companies",
+  "corp",
+  "corporation",
+  "group",
+  "services",
+  "service",
+  "center",
+  "centers",
+  "location",
+  "locations",
+  "store",
+  "stores",
+  "energy",
+  "holdings",
+  "partners",
+  "partner",
+  "association",
+  "assoc",
+  "the",
+  "and",
+  "of",
+]);
+
 function normalizeValue(value: string | null | undefined): string {
   return (value ?? "").trim();
 }
@@ -90,6 +119,10 @@ function normalizeValue(value: string | null | undefined): string {
 function normalizeForMatch(value: string | null | undefined): string {
   return normalizeValue(value)
     .toLowerCase()
+    .replace(/co[\s-]?op/g, "coop")
+    .replace(/\bcooperative\b/g, "coop")
+    .replace(/\bassociation\b/g, "assoc")
+    .replace(/&/g, " and ")
     .replace(/[^\w\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -97,9 +130,83 @@ function normalizeForMatch(value: string | null | undefined): string {
 
 function splitSupplierTokens(value: string | null | undefined): string[] {
   return normalizeValue(value)
-    .split(",")
+    .split(/[;,]/)
     .map((item) => normalizeForMatch(item))
     .filter(Boolean);
+}
+
+function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => normalizeValue(value))
+        .filter(Boolean),
+    ),
+  );
+}
+
+function getSignificantWords(value: string | null | undefined): string[] {
+  return normalizeForMatch(value)
+    .split(" ")
+    .filter(
+      (word) =>
+        word.length >= 3 &&
+        !COMMON_BUSINESS_STOPWORDS.has(word),
+    );
+}
+
+function countSharedWords(a: string | null | undefined, b: string | null | undefined): number {
+  const aWords = new Set(getSignificantWords(a));
+  const bWords = new Set(getSignificantWords(b));
+
+  let count = 0;
+  aWords.forEach((word) => {
+    if (bWords.has(word)) count += 1;
+  });
+
+  return count;
+}
+
+function companyNamesStronglyMatch(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  const a = normalizeForMatch(left);
+  const b = normalizeForMatch(right);
+
+  if (!a || !b) return false;
+  if (a === b) return true;
+
+  const aWords = getSignificantWords(a);
+  const bWords = getSignificantWords(b);
+  const sharedWords = countSharedWords(a, b);
+
+  if (sharedWords >= 2) return true;
+
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length <= b.length ? b : a;
+  const shorterWords = getSignificantWords(shorter);
+  const longerWords = getSignificantWords(longer);
+
+  if (
+    shorterWords.length === 1 &&
+    shorterWords[0] &&
+    shorterWords[0].length >= 5 &&
+    longerWords.includes(shorterWords[0]) &&
+    longer.startsWith(shorterWords[0])
+  ) {
+    return true;
+  }
+
+  if (
+    shorter.length >= 12 &&
+    longer.includes(shorter) &&
+    sharedWords >= 1
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function getAccountDisplayName(account: AccountRow | null): string {
@@ -142,8 +249,11 @@ function getPersonCompany(person: LinkedPerson): string {
 }
 
 function searchIncludes(values: Array<string | null | undefined>, query: string): boolean {
+  const normalizedQuery = normalizeForMatch(query);
+  if (!normalizedQuery) return false;
+
   const haystack = values.map((value) => normalizeForMatch(value)).join(" ");
-  return haystack.includes(normalizeForMatch(query));
+  return haystack.includes(normalizedQuery);
 }
 
 function buildAccountSearchFields(account: AccountRow): Array<string | null | undefined> {
@@ -181,38 +291,54 @@ function buildPersonSearchFields(person: PeopleRow): Array<string | null | undef
 }
 
 function isLinkedPerson(account: AccountRow, person: PeopleRow): boolean {
-  const accountLongName = normalizeForMatch(account.long_name);
-  const accountRetailer = normalizeForMatch(account.retailer);
-  const accountName = normalizeForMatch(account.name);
-  const accountState = normalizeForMatch(account.state);
+  const accountNames = uniqueNonEmpty([
+    account.long_name,
+    account.retailer,
+    account.name,
+  ]);
+
+  const personNames = uniqueNonEmpty([
+    person.company_name,
+    person.national_name,
+  ]);
+
+  if (accountNames.length === 0 || personNames.length === 0) {
+    return false;
+  }
+
+  const stateMatch =
+    !normalizeForMatch(account.state) ||
+    !normalizeForMatch(person.state) ||
+    normalizeForMatch(account.state) === normalizeForMatch(person.state);
+
+  if (!stateMatch) {
+    return false;
+  }
+
+  const strongNameMatch = accountNames.some((accountName) =>
+    personNames.some((personName) =>
+      companyNamesStronglyMatch(accountName, personName),
+    ),
+  );
+
+  if (!strongNameMatch) {
+    return false;
+  }
+
   const accountSuppliers = splitSupplierTokens(account.suppliers);
+  const personSuppliers = splitSupplierTokens(person.supplier);
 
-  const personCompany = normalizeForMatch(person.company_name);
-  const personNational = normalizeForMatch(person.national_name);
-  const personSupplierTokens = splitSupplierTokens(person.supplier);
-  const personState = normalizeForMatch(person.state);
-
-  const companyCandidates = [personCompany, personNational].filter(Boolean);
-
-  const companyMatch = companyCandidates.some((candidate) => {
-    return (
-      (!!accountLongName && candidate.includes(accountLongName)) ||
-      (!!accountRetailer && candidate.includes(accountRetailer)) ||
-      (!!accountName && candidate.includes(accountName)) ||
-      (!!candidate && accountLongName.includes(candidate)) ||
-      (!!candidate && accountRetailer.includes(candidate)) ||
-      (!!candidate && accountName.includes(candidate))
+  if (accountSuppliers.length > 0 && personSuppliers.length > 0) {
+    const supplierOverlap = accountSuppliers.some((supplier) =>
+      personSuppliers.includes(supplier),
     );
-  });
 
-  const supplierMatch =
-    accountSuppliers.length === 0 ||
-    personSupplierTokens.length === 0 ||
-    accountSuppliers.some((supplier) => personSupplierTokens.includes(supplier));
+    if (!supplierOverlap) {
+      return false;
+    }
+  }
 
-  const stateMatch = !accountState || !personState || accountState === personState;
-
-  return companyMatch && supplierMatch && stateMatch;
+  return true;
 }
 
 function sortAccounts(a: AccountRow, b: AccountRow): number {
@@ -260,6 +386,69 @@ function isRelevantAccount(account: AccountRow): boolean {
   if (isHeadquarters) return true;
 
   return relevance === "relevant";
+}
+
+function formatInteractionDate(value: string | null | undefined): string {
+  const raw = normalizeValue(value);
+  if (!raw) return "No date";
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(parsed);
+}
+
+function formatInteractionType(value: string | null | undefined): string {
+  const raw = normalizeValue(value);
+  if (!raw) return "Unknown";
+
+  return raw
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function formatStageLabel(value: string | null | undefined): string {
+  const normalized = normalizeForMatch(value);
+
+  if (!normalized) return "Unstaged";
+  if (normalized === "introduction") return "Introduction";
+  if (normalized === "technical training" || normalized === "technical_training") {
+    return "Technical Training";
+  }
+  if (normalized === "field evaluation" || normalized === "field_evaluation") {
+    return "Field Evaluation";
+  }
+  if (normalized === "adoption") return "Adoption";
+
+  return normalizeValue(value)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function getStageBadgeClasses(stage: string | null | undefined): string {
+  const normalized = normalizeForMatch(stage);
+
+  if (normalized === "introduction") {
+    return "border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200";
+  }
+
+  if (normalized === "technical training" || normalized === "technical_training") {
+    return "border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-200";
+  }
+
+  if (normalized === "field evaluation" || normalized === "field_evaluation") {
+    return "border-yellow-300 bg-yellow-100 text-yellow-900 dark:border-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-200";
+  }
+
+  if (normalized === "adoption") {
+    return "border-green-300 bg-green-100 text-green-800 dark:border-green-700 dark:bg-green-950/40 dark:text-green-200";
+  }
+
+  return "border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200";
 }
 
 export default function CommercialIntelligenceHubPage() {
@@ -528,12 +717,15 @@ export default function CommercialIntelligenceHubPage() {
   const kingpinCount = linkedPeople.filter((person) => person.source_table === "kingpins").length;
   const otherCount = Math.max(linkedPeople.length - contactCount - kingpinCount, 0);
 
-  const mostRecentInteraction =
-    [...linkedInteractions].sort((a, b) => {
+  const sortedTimelineInteractions = useMemo(() => {
+    return [...linkedInteractions].sort((a, b) => {
       const aDate = a.date ?? a.created_at ?? "";
       const bDate = b.date ?? b.created_at ?? "";
       return bDate.localeCompare(aDate);
-    })[0] ?? null;
+    });
+  }, [linkedInteractions]);
+
+  const mostRecentInteraction = sortedTimelineInteractions[0] ?? null;
 
   const handleEditField = (field: keyof AccountEditForm, value: string) => {
     setEditForm((current) => ({
@@ -680,11 +872,10 @@ export default function CommercialIntelligenceHubPage() {
       title="Commercial Intelligence Hub"
       subtitle="Search a commercial account, review linked people, correct account data, and use this page as the working intelligence center for relationship decisions."
     >
-      <div className="grid gap-6 xl:grid-cols-[minmax(360px,420px)_minmax(0,1fr)]">
+      <div className="grid gap-6">
         <SectionCard
           title="Commercial Search"
           description="Search by account, retailer, city, state, supplier, category, or linked contact/kingpin name."
-          className="self-start xl:sticky xl:top-6"
         >
           <Input
             label="Search Accounts"
@@ -714,10 +905,9 @@ export default function CommercialIntelligenceHubPage() {
             </div>
           ) : null}
 
-          <div className="mt-4 max-h-[65vh] space-y-3 overflow-y-auto pr-2">
+          <div className="mt-4 max-h-[28rem] space-y-3 overflow-y-auto pr-2">
             {accounts.map((account) => {
               const isSelected = selectedAccount?.id === account.id;
-              const relevance = normalizeForMatch(account.row_crop_relevance);
               const category = normalizeForMatch(account.category);
               const isHeadquarters =
                 category.includes("corporate") || category.includes("regional");
@@ -743,9 +933,7 @@ export default function CommercialIntelligenceHubPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="font-bold">{getAccountDisplayName(account)}</div>
                     {account.category ? <RecordBadge>{account.category}</RecordBadge> : null}
-                    {displayRelevance ? (
-                      <RecordBadge>{displayRelevance}</RecordBadge>
-                    ) : null}
+                    <RecordBadge>{displayRelevance}</RecordBadge>
                   </div>
 
                   <div className="mt-2 text-sm">
@@ -768,436 +956,483 @@ export default function CommercialIntelligenceHubPage() {
           </div>
         </SectionCard>
 
-        <div className="grid gap-6">
-          <SectionCard
-            title="Account Intelligence"
-            description="Review and correct the core business details for the selected location."
-          >
-            {selectedAccount ? (
-              <div className="grid gap-4">
-                <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                  <div>
-                    <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      Account Name
+        <SectionCard
+          title="Commercial Relationship Timeline"
+          description="Current scaffold for account-set interaction history. This sits directly below search and will be upgraded into the full multi-user stage timeline."
+        >
+          {sortedTimelineInteractions.length === 0 ? (
+            <StatusMessage
+              message="No linked interactions found for the current matched account set yet."
+              tone="info"
+            />
+          ) : (
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+                Timeline scaffold is now in place. Next build step can convert this feed into the full multi-user horizontal progression view across Introduction, Technical Training, Field Evaluation, and Adoption.
+              </div>
+
+              <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-2">
+                {sortedTimelineInteractions.slice(0, 40).map((interaction) => (
+                  <div
+                    key={interaction.id}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <RecordBadge>{formatInteractionType(interaction.type)}</RecordBadge>
+                      <span
+                        className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getStageBadgeClasses(
+                          interaction.stage,
+                        )}`}
+                      >
+                        {formatStageLabel(interaction.stage)}
+                      </span>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        {formatInteractionDate(interaction.date || interaction.created_at)}
+                      </span>
                     </div>
-                    <div className="mt-1 text-2xl font-bold">
-                      {getAccountDisplayName(selectedAccount)}
+
+                    <div className="mt-3 text-base font-semibold text-slate-900 dark:text-white">
+                      {interaction.summary || "Interaction"}
                     </div>
-                    <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                      {selectedAccount.long_name || selectedAccount.retailer || "Selected location"}
+
+                    <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                      {interaction.details || interaction.outcome || "No additional details recorded."}
                     </div>
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </SectionCard>
 
-                  <div className="flex flex-wrap gap-2">
-                    {!isEditingAccount ? (
-                      <SecondaryButton onClick={handleStartEditing}>
-                        Edit Account Details
-                      </SecondaryButton>
-                    ) : (
-                      <SecondaryButton
-                        onClick={handleCancelEditing}
-                        disabled={isSavingAccount}
-                      >
-                        Cancel
-                      </SecondaryButton>
-                    )}
+        <SectionCard
+          title="Commercial Footprint"
+          description="Visible location buckets for the matched account set, with KPI emphasis on relevant locations only."
+        >
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Relevant Locations
+              </div>
+              <div className="mt-1 text-4xl font-bold">{relevantAccounts.length}</div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Total Locations
+              </div>
+              <div className="mt-1 text-4xl font-bold">{accounts.length}</div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                % Relevant
+              </div>
+              <div className="mt-1 text-4xl font-bold">{percentRelevant}%</div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Unclassified
+              </div>
+              <div className="mt-1 text-4xl font-bold">{unknownAccounts.length}</div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Partial / Mixed
+              </div>
+              <div className="mt-1 text-3xl font-bold">{partialAccounts.length}</div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Non-Relevant
+              </div>
+              <div className="mt-1 text-3xl font-bold">{nonRelevantAccounts.length}</div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                HQ Override Included
+              </div>
+              <div className="mt-1 text-sm font-semibold">
+                Corporate HQ and Regional HQ always count as relevant.
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Account Intelligence"
+          description="Review and correct the core business details for the selected location."
+        >
+          {selectedAccount ? (
+            <div className="grid gap-4">
+              <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div>
+                  <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Account Name
+                  </div>
+                  <div className="mt-1 text-2xl font-bold">
+                    {getAccountDisplayName(selectedAccount)}
+                  </div>
+                  <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                    {selectedAccount.long_name || selectedAccount.retailer || "Selected location"}
                   </div>
                 </div>
 
-                {!isEditingAccount ? (
-                  <>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                        <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Retailer
-                        </div>
-                        <div className="mt-1 font-semibold">
-                          {selectedAccount.retailer || "Not listed"}
-                        </div>
-                      </div>
+                <div className="flex flex-wrap gap-2">
+                  {!isEditingAccount ? (
+                    <SecondaryButton onClick={handleStartEditing}>
+                      Edit Account Details
+                    </SecondaryButton>
+                  ) : (
+                    <SecondaryButton
+                      onClick={handleCancelEditing}
+                      disabled={isSavingAccount}
+                    >
+                      Cancel
+                    </SecondaryButton>
+                  )}
+                </div>
+              </div>
 
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                        <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Category
-                        </div>
-                        <div className="mt-1 font-semibold">
-                          {selectedAccount.category || "Not listed"}
-                        </div>
+              {!isEditingAccount ? (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                      <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Retailer
                       </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                        <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Row Crop Relevance
-                        </div>
-                        <div className="mt-1 font-semibold">
-                          {isRelevantAccount(selectedAccount)
-                            ? "relevant"
-                            : selectedAccount.row_crop_relevance || "unknown"}
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                        <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Office Phone
-                        </div>
-                        <div className="mt-1 font-semibold">
-                          <ContactValueLink kind="office" value={selectedAccount.office_phone} />
-                        </div>
+                      <div className="mt-1 font-semibold">
+                        {selectedAccount.retailer || "Not listed"}
                       </div>
                     </div>
 
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
                       <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        Address
+                        Category
                       </div>
                       <div className="mt-1 font-semibold">
-                        <AddressValueLink
-                          value={getAccountAddress(selectedAccount)}
-                          address={selectedAccount.address}
-                          city={selectedAccount.city}
-                          state={selectedAccount.state}
-                          zip={selectedAccount.zip}
-                          label={getAccountDisplayName(selectedAccount)}
-                          showPin
-                        />
+                        {selectedAccount.category || "Not listed"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                      <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Row Crop Relevance
+                      </div>
+                      <div className="mt-1 font-semibold">
+                        {isRelevantAccount(selectedAccount)
+                          ? "relevant"
+                          : selectedAccount.row_crop_relevance || "unknown"}
                       </div>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                        <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Suppliers
-                        </div>
-                        <div className="mt-1 font-semibold">
-                          {selectedAccount.suppliers || "Not listed"}
-                        </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                      <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Office Phone
                       </div>
-
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                        <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Account Key
-                        </div>
-                        <div className="mt-1 font-semibold">
-                          {selectedAccount.account_key || "Not listed"}
-                        </div>
+                      <div className="mt-1 font-semibold">
+                        <ContactValueLink kind="office" value={selectedAccount.office_phone} />
                       </div>
                     </div>
-                  </>
-                ) : (
-                  <div className="grid gap-4">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Input
-                        label="Supplier"
-                        value={editForm.suppliers}
-                        onChange={(value) => handleEditField("suppliers", value)}
-                        placeholder="Example: Rosen's"
-                      />
-                      <Input
-                        label="Category"
-                        value={editForm.category}
-                        onChange={(value) => handleEditField("category", value)}
-                        placeholder="Example: Coop, Retailer, Dealer"
-                      />
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                    <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Address
                     </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Input
-                        label="Office Phone"
-                        value={editForm.office_phone}
-                        onChange={(value) => handleEditField("office_phone", value)}
-                        placeholder="Office phone"
-                      />
-                      <Input
-                        label="Address"
-                        value={editForm.address}
-                        onChange={(value) => handleEditField("address", value)}
-                        placeholder="Street address"
-                      />
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <Input
-                        label="City"
-                        value={editForm.city}
-                        onChange={(value) => handleEditField("city", value)}
-                        placeholder="City"
-                      />
-                      <Input
-                        label="State"
-                        value={editForm.state}
-                        onChange={(value) => handleEditField("state", value)}
-                        placeholder="State"
-                      />
-                      <Input
-                        label="ZIP"
-                        value={editForm.zip}
-                        onChange={(value) => handleEditField("zip", value)}
-                        placeholder="ZIP"
-                      />
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <label className="mb-1 block text-sm font-semibold">
-                          Row Crop Relevance
-                        </label>
-                        <select
-                          value={editForm.row_crop_relevance}
-                          onChange={(event) =>
-                            handleEditField("row_crop_relevance", event.target.value)
-                          }
-                          className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-emerald-500 dark:border-slate-600 dark:bg-slate-900"
-                        >
-                          <option value="relevant">relevant</option>
-                          <option value="partial">partial</option>
-                          <option value="not_relevant">not_relevant</option>
-                          <option value="unknown">unknown</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-                      Use <span className="font-semibold">Save This Location</span> for local fields
-                      like phone or address. Use <span className="font-semibold">Save Entire Company</span> for shared fields like supplier, category, and row crop relevance.
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <PrimaryButton
-                        onClick={handleSaveThisLocation}
-                        disabled={isSavingAccount}
-                      >
-                        {isSavingAccount ? "Saving..." : "Save This Location"}
-                      </PrimaryButton>
-
-                      <SecondaryButton
-                        onClick={handleSaveEntireCompany}
-                        disabled={isSavingAccount}
-                      >
-                        {isSavingAccount ? "Saving..." : "Save Entire Company"}
-                      </SecondaryButton>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <StatusMessage
-                message="Search and select an account to load the Commercial Intelligence Hub."
-                tone="info"
-              />
-            )}
-          </SectionCard>
-
-          <SectionCard
-            title="Commercial Footprint"
-            description="Visible location buckets for the matched account set, with KPI emphasis on relevant locations only."
-          >
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Relevant Locations
-                </div>
-                <div className="mt-1 text-4xl font-bold">{relevantAccounts.length}</div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Total Locations
-                </div>
-                <div className="mt-1 text-4xl font-bold">{accounts.length}</div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  % Relevant
-                </div>
-                <div className="mt-1 text-4xl font-bold">{percentRelevant}%</div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Unclassified
-                </div>
-                <div className="mt-1 text-4xl font-bold">{unknownAccounts.length}</div>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Partial / Mixed
-                </div>
-                <div className="mt-1 text-3xl font-bold">{partialAccounts.length}</div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Non-Relevant
-                </div>
-                <div className="mt-1 text-3xl font-bold">{nonRelevantAccounts.length}</div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  HQ Override Included
-                </div>
-                <div className="mt-1 text-sm font-semibold">
-                  Corporate HQ and Regional HQ always count as relevant.
-                </div>
-              </div>
-            </div>
-          </SectionCard>
-
-          <div className="grid gap-6 md:grid-cols-2">
-            <SectionCard
-              title="People Snapshot"
-              description="Quick count of linked records across all currently matched locations."
-            >
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                  <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Contacts
-                  </div>
-                  <div className="mt-1 text-4xl font-bold">{contactCount}</div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                  <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Kingpins
-                  </div>
-                  <div className="mt-1 text-4xl font-bold">{kingpinCount}</div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800 sm:col-span-2">
-                  <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Other / Unassigned
-                  </div>
-                  <div className="mt-1 text-4xl font-bold">{otherCount}</div>
-                </div>
-              </div>
-            </SectionCard>
-
-            <SectionCard
-              title="Recent Activity Summary"
-              description="Read-only snapshot of interaction activity across all currently matched locations."
-            >
-              <div className="grid gap-4">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                  <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Logged Interactions
-                  </div>
-                  <div className="mt-1 text-4xl font-bold">{linkedInteractions.length}</div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                  <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Most Recent Interaction Date
-                  </div>
-                  <div className="mt-1 font-semibold">
-                    {mostRecentInteraction?.date ||
-                      mostRecentInteraction?.created_at ||
-                      "No activity recorded"}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                  <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Most Recent Interaction Type
-                  </div>
-                  <div className="mt-1 font-semibold">
-                    {mostRecentInteraction?.type || "No activity recorded"}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                  <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Linked People
-                  </div>
-                  <div className="mt-1 font-semibold">{linkedPeople.length}</div>
-                </div>
-              </div>
-            </SectionCard>
-          </div>
-
-          <SectionCard
-            title="Linked People"
-            description="Contacts and kingpins associated with the current matched account set, not just the selected location."
-          >
-            {linkedPeople.length === 0 ? (
-              <StatusMessage
-                message="No linked people found for this account set yet."
-                tone="info"
-              />
-            ) : (
-              <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-2">
-                {linkedPeople.map((person) => (
-                  <div
-                    key={`${person.source_table}-${person.id}`}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-2xl font-bold">{getPersonDisplayName(person)}</div>
-                      <RecordBadge>{person.contact_type || person.source_table}</RecordBadge>
-                    </div>
-
-                    <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
-                      <div>
-                        <span className="font-semibold">Title:</span> {person.title || "Not listed"}
-                      </div>
-
-                      <div>
-                        <span className="font-semibold">Email:</span>{" "}
-                        <ContactValueLink kind="email" value={person.email} />
-                      </div>
-
-                      <div>
-                        <span className="font-semibold">Mobile:</span>{" "}
-                        <ContactValueLink kind="mobile" value={person.cell_phone} />
-                      </div>
-
-                      <div>
-                        <span className="font-semibold">Office:</span>{" "}
-                        <ContactValueLink kind="office" value={person.office_phone} />
-                      </div>
-
-                      <div>
-                        <span className="font-semibold">Company:</span> {getPersonCompany(person)}
-                      </div>
-
-                      <div>
-                        <span className="font-semibold">Supplier / State:</span>{" "}
-                        {[person.supplier, person.state].filter(Boolean).join(" - ") || "Not listed"}
-                      </div>
-                    </div>
-
-                    <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
-                      <span className="font-semibold">Address:</span>{" "}
+                    <div className="mt-1 font-semibold">
                       <AddressValueLink
-                        value={person.address}
-                        address={person.address}
-                        state={person.state}
-                        label={getPersonDisplayName(person)}
-                        context={getPersonCompany(person)}
+                        value={getAccountAddress(selectedAccount)}
+                        address={selectedAccount.address}
+                        city={selectedAccount.city}
+                        state={selectedAccount.state}
+                        zip={selectedAccount.zip}
+                        label={getAccountDisplayName(selectedAccount)}
+                        showPin
                       />
                     </div>
                   </div>
-                ))}
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                      <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Suppliers
+                      </div>
+                      <div className="mt-1 font-semibold">
+                        {selectedAccount.suppliers || "Not listed"}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                      <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Account Key
+                      </div>
+                      <div className="mt-1 font-semibold">
+                        {selectedAccount.account_key || "Not listed"}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="grid gap-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Input
+                      label="Supplier"
+                      value={editForm.suppliers}
+                      onChange={(value) => handleEditField("suppliers", value)}
+                      placeholder="Example: Rosen's"
+                    />
+                    <Input
+                      label="Category"
+                      value={editForm.category}
+                      onChange={(value) => handleEditField("category", value)}
+                      placeholder="Example: Coop, Retailer, Dealer"
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Input
+                      label="Office Phone"
+                      value={editForm.office_phone}
+                      onChange={(value) => handleEditField("office_phone", value)}
+                      placeholder="Office phone"
+                    />
+                    <Input
+                      label="Address"
+                      value={editForm.address}
+                      onChange={(value) => handleEditField("address", value)}
+                      placeholder="Street address"
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <Input
+                      label="City"
+                      value={editForm.city}
+                      onChange={(value) => handleEditField("city", value)}
+                      placeholder="City"
+                    />
+                    <Input
+                      label="State"
+                      value={editForm.state}
+                      onChange={(value) => handleEditField("state", value)}
+                      placeholder="State"
+                    />
+                    <Input
+                      label="ZIP"
+                      value={editForm.zip}
+                      onChange={(value) => handleEditField("zip", value)}
+                      placeholder="ZIP"
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-semibold">
+                        Row Crop Relevance
+                      </label>
+                      <select
+                        value={editForm.row_crop_relevance}
+                        onChange={(event) =>
+                          handleEditField("row_crop_relevance", event.target.value)
+                        }
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-emerald-500 dark:border-slate-600 dark:bg-slate-900"
+                      >
+                        <option value="relevant">relevant</option>
+                        <option value="partial">partial</option>
+                        <option value="not_relevant">not_relevant</option>
+                        <option value="unknown">unknown</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+                    Use <span className="font-semibold">Save This Location</span> for local fields
+                    like phone or address. Use <span className="font-semibold">Save Entire Company</span> for shared fields like supplier, category, and row crop relevance.
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <PrimaryButton
+                      onClick={handleSaveThisLocation}
+                      disabled={isSavingAccount}
+                    >
+                      {isSavingAccount ? "Saving..." : "Save This Location"}
+                    </PrimaryButton>
+
+                    <SecondaryButton
+                      onClick={handleSaveEntireCompany}
+                      disabled={isSavingAccount}
+                    >
+                      {isSavingAccount ? "Saving..." : "Save Entire Company"}
+                    </SecondaryButton>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <StatusMessage
+              message="Search and select an account to load the Commercial Intelligence Hub."
+              tone="info"
+            />
+          )}
+        </SectionCard>
+
+        <div className="grid gap-6 md:grid-cols-2">
+          <SectionCard
+            title="People Snapshot"
+            description="Quick count of linked records across all currently matched locations."
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Contacts
+                </div>
+                <div className="mt-1 text-4xl font-bold">{contactCount}</div>
               </div>
-            )}
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Kingpins
+                </div>
+                <div className="mt-1 text-4xl font-bold">{kingpinCount}</div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800 sm:col-span-2">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Other / Unassigned
+                </div>
+                <div className="mt-1 text-4xl font-bold">{otherCount}</div>
+              </div>
+            </div>
           </SectionCard>
 
           <SectionCard
-            title="Strategic Notes"
-            description="Working space for what this account means commercially and what should happen next."
+            title="Recent Activity Summary"
+            description="Read-only snapshot of interaction activity across all currently matched locations."
           >
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-700 dark:bg-slate-800">
-              This page is now positioned as the Commercial Intelligence Hub. Use it to review the
-              account, correct business details in real time, and quickly assess the linked people
-              and recent activity around the account.
+            <div className="grid gap-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Logged Interactions
+                </div>
+                <div className="mt-1 text-4xl font-bold">{linkedInteractions.length}</div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Most Recent Interaction Date
+                </div>
+                <div className="mt-1 font-semibold">
+                  {mostRecentInteraction?.date ||
+                    mostRecentInteraction?.created_at ||
+                    "No activity recorded"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Most Recent Interaction Type
+                </div>
+                <div className="mt-1 font-semibold">
+                  {mostRecentInteraction?.type || "No activity recorded"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Linked People
+                </div>
+                <div className="mt-1 font-semibold">{linkedPeople.length}</div>
+              </div>
             </div>
           </SectionCard>
         </div>
+
+        <SectionCard
+          title="Linked People"
+          description="Contacts and kingpins associated with the current matched account set, not just the selected location."
+        >
+          {linkedPeople.length === 0 ? (
+            <StatusMessage
+              message="No linked people found for this account set yet."
+              tone="info"
+            />
+          ) : (
+            <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-2">
+              {linkedPeople.map((person) => (
+                <div
+                  key={`${person.source_table}-${person.id}`}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-2xl font-bold">{getPersonDisplayName(person)}</div>
+                    <RecordBadge>{person.contact_type || person.source_table}</RecordBadge>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
+                    <div>
+                      <span className="font-semibold">Title:</span> {person.title || "Not listed"}
+                    </div>
+
+                    <div>
+                      <span className="font-semibold">Email:</span>{" "}
+                      <ContactValueLink kind="email" value={person.email} />
+                    </div>
+
+                    <div>
+                      <span className="font-semibold">Mobile:</span>{" "}
+                      <ContactValueLink kind="mobile" value={person.cell_phone} />
+                    </div>
+
+                    <div>
+                      <span className="font-semibold">Office:</span>{" "}
+                      <ContactValueLink kind="office" value={person.office_phone} />
+                    </div>
+
+                    <div>
+                      <span className="font-semibold">Company:</span> {getPersonCompany(person)}
+                    </div>
+
+                    <div>
+                      <span className="font-semibold">Supplier / State:</span>{" "}
+                      {[person.supplier, person.state].filter(Boolean).join(" - ") || "Not listed"}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                    <span className="font-semibold">Address:</span>{" "}
+                    <AddressValueLink
+                      value={person.address}
+                      address={person.address}
+                      state={person.state}
+                      label={getPersonDisplayName(person)}
+                      context={getPersonCompany(person)}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard
+          title="Strategic Notes"
+          description="Working space for what this account means commercially and what should happen next."
+        >
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-700 dark:bg-slate-800">
+            This page is now positioned as the Commercial Intelligence Hub. Use it to review the
+            account, correct business details in real time, assess the timeline scaffold, and
+            quickly evaluate linked people plus recent activity around the matched account set.
+          </div>
+        </SectionCard>
       </div>
     </HubShell>
   );
