@@ -83,6 +83,28 @@ type AccountEditForm = {
   row_crop_relevance: string;
 };
 
+type SummaryCounts = {
+  totalAccounts: number;
+  totalContacts: number;
+  totalKingpins: number;
+  totalInteractions: number;
+};
+
+type StageKey =
+  | "introduction"
+  | "technical_training"
+  | "field_evaluation"
+  | "adoption";
+
+const ACCOUNT_SELECT =
+  "id, source_system, source_file, source_sheet, source_row_number, account_key, long_name, retailer, name, address, city, state, zip, category, suppliers, is_active, created_at, updated_at, office_phone, row_crop_relevance";
+
+const PEOPLE_SELECT =
+  "id, state, national_name, company_name, supplier, corporate_kingpin, regional_kingpin, title, address, office_phone, cell_phone, email, contact_type, created_at";
+
+const INTERACTION_SELECT =
+  "id, user_id, contact_id, date, type, summary, details, outcome, follow_up_date, created_at, stage";
+
 const COMMON_BUSINESS_STOPWORDS = new Set([
   "inc",
   "llc",
@@ -148,11 +170,7 @@ function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
 function getSignificantWords(value: string | null | undefined): string[] {
   return normalizeForMatch(value)
     .split(" ")
-    .filter(
-      (word) =>
-        word.length >= 3 &&
-        !COMMON_BUSINESS_STOPWORDS.has(word),
-    );
+    .filter((word) => word.length >= 3 && !COMMON_BUSINESS_STOPWORDS.has(word));
 }
 
 function countSharedWords(a: string | null | undefined, b: string | null | undefined): number {
@@ -177,10 +195,7 @@ function companyNamesStronglyMatch(
   if (!a || !b) return false;
   if (a === b) return true;
 
-  const aWords = getSignificantWords(a);
-  const bWords = getSignificantWords(b);
   const sharedWords = countSharedWords(a, b);
-
   if (sharedWords >= 2) return true;
 
   const shorter = a.length <= b.length ? a : b;
@@ -198,11 +213,7 @@ function companyNamesStronglyMatch(
     return true;
   }
 
-  if (
-    shorter.length >= 12 &&
-    longer.includes(shorter) &&
-    sharedWords >= 1
-  ) {
+  if (shorter.length >= 12 && longer.includes(shorter) && sharedWords >= 1) {
     return true;
   }
 
@@ -254,23 +265,6 @@ function searchIncludes(values: Array<string | null | undefined>, query: string)
 
   const haystack = values.map((value) => normalizeForMatch(value)).join(" ");
   return haystack.includes(normalizedQuery);
-}
-
-function buildAccountSearchFields(account: AccountRow): Array<string | null | undefined> {
-  return [
-    account.long_name,
-    account.retailer,
-    account.name,
-    account.address,
-    account.city,
-    account.state,
-    account.zip,
-    account.category,
-    account.suppliers,
-    account.office_phone,
-    account.account_key,
-    account.row_crop_relevance,
-  ];
 }
 
 function buildPersonSearchFields(person: PeopleRow): Array<string | null | undefined> {
@@ -376,16 +370,16 @@ function buildEditForm(account: AccountRow | null): AccountEditForm {
   };
 }
 
-function isRelevantAccount(account: AccountRow): boolean {
-  const relevance = normalizeForMatch(account.row_crop_relevance || "unknown");
+function isHeadquartersAccount(account: AccountRow): boolean {
+  const category = normalizeForMatch(account.category);
+  return category.includes("corporate") || category.includes("regional");
+}
+
+function isAgronomyAccount(account: AccountRow): boolean {
   const category = normalizeForMatch(account.category);
 
-  const isHeadquarters =
-    category.includes("corporate") || category.includes("regional");
-
-  if (isHeadquarters) return true;
-
-  return relevance === "relevant";
+  if (isHeadquartersAccount(account)) return true;
+  return category.includes("agronomy");
 }
 
 function formatInteractionDate(value: string | null | undefined): string {
@@ -411,36 +405,69 @@ function formatInteractionType(value: string | null | undefined): string {
     .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
+function normalizeStageKey(value: string | null | undefined): StageKey | null {
+  const normalized = normalizeForMatch(value)
+    .replace(/\//g, " ")
+    .replace(/\s+/g, "_");
+
+  if (
+    normalized === "introduction" ||
+    normalized === "intro" ||
+    normalized === "touch_base" ||
+    normalized === "intro_touch_base"
+  ) {
+    return "introduction";
+  }
+
+  if (
+    normalized === "technical_training" ||
+    normalized === "technical" ||
+    normalized === "training" ||
+    normalized === "education"
+  ) {
+    return "technical_training";
+  }
+
+  if (
+    normalized === "field_evaluation" ||
+    normalized === "field" ||
+    normalized === "evaluation" ||
+    normalized === "trial" ||
+    normalized === "field_trial"
+  ) {
+    return "field_evaluation";
+  }
+
+  if (normalized === "adoption" || normalized === "adopted") {
+    return "adoption";
+  }
+
+  return null;
+}
+
 function formatStageLabel(value: string | null | undefined): string {
-  const normalized = normalizeForMatch(value);
+  const stage = normalizeStageKey(value);
 
-  if (!normalized) return "Unstaged";
-  if (normalized === "introduction") return "Introduction";
-  if (normalized === "technical training" || normalized === "technical_training") {
-    return "Technical Training";
-  }
-  if (normalized === "field evaluation" || normalized === "field_evaluation") {
-    return "Field Evaluation";
-  }
-  if (normalized === "adoption") return "Adoption";
+  if (stage === "introduction") return "Introduction";
+  if (stage === "technical_training") return "Technical Training";
+  if (stage === "field_evaluation") return "Field Evaluation";
+  if (stage === "adoption") return "Adoption";
 
-  return normalizeValue(value)
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (match) => match.toUpperCase());
+  return "Unstaged";
 }
 
 function getStageBadgeClasses(stage: string | null | undefined): string {
-  const normalized = normalizeForMatch(stage);
+  const normalized = normalizeStageKey(stage);
 
   if (normalized === "introduction") {
     return "border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200";
   }
 
-  if (normalized === "technical training" || normalized === "technical_training") {
+  if (normalized === "technical_training") {
     return "border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-200";
   }
 
-  if (normalized === "field evaluation" || normalized === "field_evaluation") {
+  if (normalized === "field_evaluation") {
     return "border-yellow-300 bg-yellow-100 text-yellow-900 dark:border-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-200";
   }
 
@@ -451,10 +478,54 @@ function getStageBadgeClasses(stage: string | null | undefined): string {
   return "border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200";
 }
 
+function escapeLikeValue(value: string): string {
+  return value.replace(/[%_,]/g, " ").trim();
+}
+
+async function fetchAllRows<T>(
+  supabase: ReturnType<typeof createClient>,
+  table: string,
+  selectClause: string,
+  pageSize = 1000,
+): Promise<T[]> {
+  const rows: T[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabase
+      .from(table)
+      .select(selectClause)
+      .range(from, to);
+
+    if (error) {
+      throw error;
+    }
+
+    const chunk = (data ?? []) as T[];
+    rows.push(...chunk);
+
+    if (chunk.length < pageSize) {
+      break;
+    }
+
+    from += pageSize;
+  }
+
+  return rows;
+}
+
 export default function CommercialIntelligenceHubPage() {
   const supabase = useMemo(() => createClient(), []);
 
   const [query, setQuery] = useState("");
+  const [summaryCounts, setSummaryCounts] = useState<SummaryCounts>({
+    totalAccounts: 0,
+    totalContacts: 0,
+    totalKingpins: 0,
+    totalInteractions: 0,
+  });
+
   const [allAccounts, setAllAccounts] = useState<AccountRow[]>([]);
   const [allContacts, setAllContacts] = useState<PeopleRow[]>([]);
   const [allKingpins, setAllKingpins] = useState<PeopleRow[]>([]);
@@ -480,75 +551,51 @@ export default function CommercialIntelligenceHubPage() {
     const loadBaseData = async () => {
       setIsLoadingBaseData(true);
 
-      const [accountsResponse, contactsResponse, kingpinsResponse, interactionsResponse] =
-        await Promise.all([
-          supabase
-            .from("accounts")
-            .select(
-              "id, source_system, source_file, source_sheet, source_row_number, account_key, long_name, retailer, name, address, city, state, zip, category, suppliers, is_active, created_at, updated_at, office_phone, row_crop_relevance",
-            )
-            .limit(2500),
-          supabase
-            .from("contacts")
-            .select(
-              "id, state, national_name, company_name, supplier, corporate_kingpin, regional_kingpin, title, address, office_phone, cell_phone, email, contact_type, created_at",
-            )
-            .limit(2500),
-          supabase
-            .from("kingpins")
-            .select(
-              "id, state, national_name, company_name, supplier, corporate_kingpin, regional_kingpin, title, address, office_phone, cell_phone, email, contact_type, created_at",
-            )
-            .limit(2500),
-          supabase
-            .from("interactions")
-            .select(
-              "id, user_id, contact_id, date, type, summary, details, outcome, follow_up_date, created_at, stage",
-            )
-            .limit(2500),
+      try {
+        const [
+          accountsCountResponse,
+          contactsCountResponse,
+          kingpinsCountResponse,
+          interactionsCountResponse,
+          allAccountsData,
+          allContactsData,
+          allKingpinsData,
+          allInteractionsData,
+        ] = await Promise.all([
+          supabase.from("accounts").select("*", { count: "exact", head: true }),
+          supabase.from("contacts").select("*", { count: "exact", head: true }),
+          supabase.from("kingpins").select("*", { count: "exact", head: true }),
+          supabase.from("interactions").select("*", { count: "exact", head: true }),
+          fetchAllRows<AccountRow>(supabase, "accounts", ACCOUNT_SELECT),
+          fetchAllRows<PeopleRow>(supabase, "contacts", PEOPLE_SELECT),
+          fetchAllRows<PeopleRow>(supabase, "kingpins", PEOPLE_SELECT),
+          fetchAllRows<InteractionRow>(supabase, "interactions", INTERACTION_SELECT),
         ]);
 
-      if (accountsResponse.error) {
+        setSummaryCounts({
+          totalAccounts: accountsCountResponse.count ?? 0,
+          totalContacts: contactsCountResponse.count ?? 0,
+          totalKingpins: kingpinsCountResponse.count ?? 0,
+          totalInteractions: interactionsCountResponse.count ?? 0,
+        });
+
+        setAllAccounts(allAccountsData.sort(sortAccounts));
+        setAllContacts(allContactsData);
+        setAllKingpins(allKingpinsData);
+        setAllInteractions(allInteractionsData);
+        setIsLoadingBaseData(false);
+      } catch (error) {
+        const messageText =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred while loading base data.";
+
         setMessage({
           tone: "error",
-          text: `Could not load accounts. ${accountsResponse.error.message}`,
+          text: `Could not load Commercial Intelligence Hub data. ${messageText}`,
         });
         setIsLoadingBaseData(false);
-        return;
       }
-
-      if (contactsResponse.error) {
-        setMessage({
-          tone: "error",
-          text: `Could not load contacts. ${contactsResponse.error.message}`,
-        });
-        setIsLoadingBaseData(false);
-        return;
-      }
-
-      if (kingpinsResponse.error) {
-        setMessage({
-          tone: "error",
-          text: `Could not load kingpins. ${kingpinsResponse.error.message}`,
-        });
-        setIsLoadingBaseData(false);
-        return;
-      }
-
-      if (interactionsResponse.error) {
-        setMessage({
-          tone: "error",
-          text: `Could not load interactions. ${interactionsResponse.error.message}`,
-        });
-        setIsLoadingBaseData(false);
-        return;
-      }
-
-      setAllAccounts(((accountsResponse.data ?? []) as AccountRow[]).sort(sortAccounts));
-      setAllContacts((contactsResponse.data ?? []) as PeopleRow[]);
-      setAllKingpins((kingpinsResponse.data ?? []) as PeopleRow[]);
-      setAllInteractions((interactionsResponse.data ?? []) as InteractionRow[]);
-      setIsLoadingBaseData(false);
     };
 
     void loadBaseData();
@@ -571,98 +618,168 @@ export default function CommercialIntelligenceHubPage() {
       return;
     }
 
-    setIsProcessingSearch(true);
+    let cancelled = false;
 
-    const contactLinkedByAccount = new Map<string, LinkedPerson[]>();
-    const kingpinLinkedByAccount = new Map<string, LinkedPerson[]>();
+    const runSearch = async () => {
+      setIsProcessingSearch(true);
 
-    for (const account of allAccounts) {
-      contactLinkedByAccount.set(
-        account.id,
-        allContacts
-          .filter((person) => isLinkedPerson(account, person))
-          .map((person) => ({
-            ...person,
-            source_table: "contacts" as const,
-          })),
-      );
+      try {
+        const safeQuery = escapeLikeValue(q);
+        const pattern = `%${safeQuery}%`;
 
-      kingpinLinkedByAccount.set(
-        account.id,
-        allKingpins
-          .filter((person) => isLinkedPerson(account, person))
-          .map((person) => ({
-            ...person,
-            source_table: "kingpins" as const,
-          })),
-      );
-    }
+        const directAccountResponse = await supabase
+          .from("accounts")
+          .select(ACCOUNT_SELECT)
+          .or(
+            [
+              `long_name.ilike.${pattern}`,
+              `retailer.ilike.${pattern}`,
+              `name.ilike.${pattern}`,
+              `address.ilike.${pattern}`,
+              `city.ilike.${pattern}`,
+              `state.ilike.${pattern}`,
+              `zip.ilike.${pattern}`,
+              `category.ilike.${pattern}`,
+              `suppliers.ilike.${pattern}`,
+              `account_key.ilike.${pattern}`,
+            ].join(","),
+          )
+          .limit(300);
 
-    const filteredAccounts = allAccounts
-      .filter((account) => {
-        const accountMatch = searchIncludes(buildAccountSearchFields(account), q);
+        if (directAccountResponse.error) {
+          throw directAccountResponse.error;
+        }
 
-        const linkedContacts = contactLinkedByAccount.get(account.id) ?? [];
-        const linkedKingpins = kingpinLinkedByAccount.get(account.id) ?? [];
+        const matchedPeopleFromQuery = [
+          ...allContacts
+            .filter((person) => searchIncludes(buildPersonSearchFields(person), q))
+            .map((person) => ({
+              ...person,
+              source_table: "contacts" as const,
+            })),
+          ...allKingpins
+            .filter((person) => searchIncludes(buildPersonSearchFields(person), q))
+            .map((person) => ({
+              ...person,
+              source_table: "kingpins" as const,
+            })),
+        ];
 
-        const peopleMatch = [...linkedContacts, ...linkedKingpins].some((person) =>
-          searchIncludes(buildPersonSearchFields(person), q),
+        const directAccounts = ((directAccountResponse.data ?? []) as AccountRow[]) ?? [];
+        const directMap = new Map(directAccounts.map((account) => [account.id, account]));
+
+        const peopleLinkedAccounts = allAccounts.filter((account) =>
+          matchedPeopleFromQuery.some((person) => isLinkedPerson(account, person)),
         );
 
-        return accountMatch || peopleMatch;
-      })
-      .sort(sortAccounts);
+        const combinedMap = new Map<string, AccountRow>();
+        directAccounts.forEach((account) => combinedMap.set(account.id, account));
+        peopleLinkedAccounts.forEach((account) => combinedMap.set(account.id, account));
 
-    setAccounts(filteredAccounts);
+        const filteredAccounts = Array.from(combinedMap.values()).sort(sortAccounts);
 
-    const nextSelectedAccount =
-      filteredAccounts.length === 0
-        ? null
-        : filteredAccounts.find((account) => account.id === selectedAccount?.id) ??
-          filteredAccounts[0];
+        if (cancelled) return;
 
-    setSelectedAccount(nextSelectedAccount);
-    setIsEditingAccount(false);
-    setEditForm(buildEditForm(nextSelectedAccount));
+        setAccounts(filteredAccounts);
 
-    if (filteredAccounts.length === 0) {
-      setLinkedPeople([]);
-      setLinkedInteractions([]);
-      setMessage({
-        tone: "info",
-        text: "No accounts matched your search.",
-      });
-      setIsProcessingSearch(false);
-      return;
-    }
+        const nextSelectedAccount =
+          filteredAccounts.length === 0
+            ? null
+            : filteredAccounts.find((account) => account.id === selectedAccount?.id) ??
+              filteredAccounts[0];
 
-    const aggregatedLinkedPeople = dedupeLinkedPeople(
-      filteredAccounts.flatMap((account) => [
-        ...(contactLinkedByAccount.get(account.id) ?? []),
-        ...(kingpinLinkedByAccount.get(account.id) ?? []),
-      ]),
-    ).sort(sortPeople);
+        setSelectedAccount(nextSelectedAccount);
+        setIsEditingAccount(false);
+        setEditForm(buildEditForm(nextSelectedAccount));
 
-    const aggregatedContactIds = new Set(
-      aggregatedLinkedPeople
-        .filter((person) => person.source_table === "contacts")
-        .map((person) => person.id),
-    );
+        if (filteredAccounts.length === 0) {
+          setLinkedPeople([]);
+          setLinkedInteractions([]);
+          setMessage({
+            tone: "info",
+            text: "No accounts matched your search.",
+          });
+          setIsProcessingSearch(false);
+          return;
+        }
 
-    const aggregatedInteractions = allInteractions.filter(
-      (interaction) =>
-        !!interaction.contact_id && aggregatedContactIds.has(interaction.contact_id),
-    );
+        const contactLinkedByAccount = new Map<string, LinkedPerson[]>();
+        const kingpinLinkedByAccount = new Map<string, LinkedPerson[]>();
 
-    setLinkedPeople(aggregatedLinkedPeople);
-    setLinkedInteractions(aggregatedInteractions);
-    setMessage({
-      tone: "success",
-      text: `Commercial Intelligence Hub loaded. ${filteredAccounts.length} matching location${
-        filteredAccounts.length === 1 ? "" : "s"
-      } and ${aggregatedLinkedPeople.length} linked people found.`,
-    });
-    setIsProcessingSearch(false);
+        for (const account of filteredAccounts) {
+          contactLinkedByAccount.set(
+            account.id,
+            allContacts
+              .filter((person) => isLinkedPerson(account, person))
+              .map((person) => ({
+                ...person,
+                source_table: "contacts" as const,
+              })),
+          );
+
+          kingpinLinkedByAccount.set(
+            account.id,
+            allKingpins
+              .filter((person) => isLinkedPerson(account, person))
+              .map((person) => ({
+                ...person,
+                source_table: "kingpins" as const,
+              })),
+          );
+        }
+
+        const aggregatedLinkedPeople = dedupeLinkedPeople(
+          filteredAccounts.flatMap((account) => [
+            ...(contactLinkedByAccount.get(account.id) ?? []),
+            ...(kingpinLinkedByAccount.get(account.id) ?? []),
+          ]),
+        ).sort(sortPeople);
+
+        const aggregatedContactIds = new Set(
+          aggregatedLinkedPeople
+            .filter((person) => person.source_table === "contacts")
+            .map((person) => person.id),
+        );
+
+        const aggregatedInteractions = allInteractions.filter(
+          (interaction) =>
+            !!interaction.contact_id && aggregatedContactIds.has(interaction.contact_id),
+        );
+
+        setLinkedPeople(aggregatedLinkedPeople);
+        setLinkedInteractions(aggregatedInteractions);
+        setMessage({
+          tone: "success",
+          text: `Commercial Intelligence Hub loaded. ${filteredAccounts.length} matching location${
+            filteredAccounts.length === 1 ? "" : "s"
+          } and ${aggregatedLinkedPeople.length} linked people found.`,
+        });
+        setIsProcessingSearch(false);
+      } catch (error) {
+        if (cancelled) return;
+
+        const messageText =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred while processing the search.";
+
+        setAccounts([]);
+        setSelectedAccount(null);
+        setLinkedPeople([]);
+        setLinkedInteractions([]);
+        setMessage({
+          tone: "error",
+          text: `Could not process search. ${messageText}`,
+        });
+        setIsProcessingSearch(false);
+      }
+    };
+
+    void runSearch();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     query,
     allAccounts,
@@ -671,6 +788,7 @@ export default function CommercialIntelligenceHubPage() {
     allInteractions,
     selectedAccount?.id,
     isLoadingBaseData,
+    supabase,
   ]);
 
   useEffect(() => {
@@ -678,44 +796,16 @@ export default function CommercialIntelligenceHubPage() {
     setEditForm(buildEditForm(selectedAccount));
   }, [selectedAccount, isEditingAccount]);
 
-  const relevantAccounts = useMemo(
-    () => accounts.filter((account) => isRelevantAccount(account)),
+  const totalLocations = accounts.length;
+  const totalAgronomyLocations = useMemo(
+    () => accounts.filter((account) => isAgronomyAccount(account)).length,
     [accounts],
   );
 
-  const partialAccounts = useMemo(
-    () =>
-      accounts.filter(
-        (account) => normalizeForMatch(account.row_crop_relevance) === "partial",
-      ),
-    [accounts],
-  );
-
-  const nonRelevantAccounts = useMemo(
-    () =>
-      accounts.filter(
-        (account) => normalizeForMatch(account.row_crop_relevance) === "not_relevant",
-      ),
-    [accounts],
-  );
-
-  const unknownAccounts = useMemo(
-    () =>
-      accounts.filter((account) => {
-        const relevance = normalizeForMatch(account.row_crop_relevance);
-        return !relevance || relevance === "unknown";
-      }),
-    [accounts],
-  );
-
-  const percentRelevant =
-    accounts.length > 0
-      ? Math.round((relevantAccounts.length / accounts.length) * 100)
+  const agronomyCoveragePercent =
+    totalLocations > 0
+      ? Math.round((totalAgronomyLocations / totalLocations) * 100)
       : 0;
-
-  const contactCount = linkedPeople.filter((person) => person.source_table === "contacts").length;
-  const kingpinCount = linkedPeople.filter((person) => person.source_table === "kingpins").length;
-  const otherCount = Math.max(linkedPeople.length - contactCount - kingpinCount, 0);
 
   const sortedTimelineInteractions = useMemo(() => {
     return [...linkedInteractions].sort((a, b) => {
@@ -726,6 +816,138 @@ export default function CommercialIntelligenceHubPage() {
   }, [linkedInteractions]);
 
   const mostRecentInteraction = sortedTimelineInteractions[0] ?? null;
+
+  const contactCount = linkedPeople.filter((person) => person.source_table === "contacts").length;
+  const kingpinCount = linkedPeople.filter((person) => person.source_table === "kingpins").length;
+  const otherCount = Math.max(linkedPeople.length - contactCount - kingpinCount, 0);
+
+  const ninetyDaysAgo = useMemo(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 90);
+    return date;
+  }, []);
+
+  const accountLinkedContactIdsById = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+
+    accounts.forEach((account) => {
+      const contactIds = new Set(
+        allContacts
+          .filter((person) => isLinkedPerson(account, person))
+          .map((person) => person.id),
+      );
+
+      map.set(account.id, contactIds);
+    });
+
+    return map;
+  }, [accounts, allContacts]);
+
+  const interactionsByAccountId = useMemo(() => {
+    const map = new Map<string, InteractionRow[]>();
+
+    accounts.forEach((account) => {
+      const contactIds = accountLinkedContactIdsById.get(account.id) ?? new Set<string>();
+
+      const accountInteractions = allInteractions.filter(
+        (interaction) =>
+          !!interaction.contact_id && contactIds.has(interaction.contact_id),
+      );
+
+      map.set(account.id, accountInteractions);
+    });
+
+    return map;
+  }, [accounts, accountLinkedContactIdsById, allInteractions]);
+
+  const locationsContacted = useMemo(() => {
+    return accounts.filter((account) => {
+      const interactions = interactionsByAccountId.get(account.id) ?? [];
+      return interactions.length > 0;
+    }).length;
+  }, [accounts, interactionsByAccountId]);
+
+  const activeLocationsLast90 = useMemo(() => {
+    return accounts.filter((account) => {
+      const interactions = interactionsByAccountId.get(account.id) ?? [];
+      return interactions.some((interaction) => {
+        const rawDate = interaction.date || interaction.created_at;
+        if (!rawDate) return false;
+
+        const parsed = new Date(rawDate);
+        if (Number.isNaN(parsed.getTime())) return false;
+
+        return parsed >= ninetyDaysAgo;
+      });
+    }).length;
+  }, [accounts, interactionsByAccountId, ninetyDaysAgo]);
+
+  const totalInteractionsForAccountSet = linkedInteractions.length;
+
+  const accountHighestStageById = useMemo(() => {
+    const map = new Map<string, StageKey | null>();
+    const stageOrder: StageKey[] = [
+      "introduction",
+      "technical_training",
+      "field_evaluation",
+      "adoption",
+    ];
+
+    accounts.forEach((account) => {
+      const interactions = interactionsByAccountId.get(account.id) ?? [];
+      let highest: StageKey | null = null;
+
+      interactions.forEach((interaction) => {
+        const stage = normalizeStageKey(interaction.stage);
+        if (!stage) return;
+
+        if (!highest) {
+          highest = stage;
+          return;
+        }
+
+        if (stageOrder.indexOf(stage) > stageOrder.indexOf(highest)) {
+          highest = stage;
+        }
+      });
+
+      map.set(account.id, highest);
+    });
+
+    return map;
+  }, [accounts, interactionsByAccountId]);
+
+  const introStageLocations = useMemo(
+    () =>
+      accounts.filter(
+        (account) => accountHighestStageById.get(account.id) === "introduction",
+      ).length,
+    [accounts, accountHighestStageById],
+  );
+
+  const technicalTrainingLocations = useMemo(
+    () =>
+      accounts.filter(
+        (account) => accountHighestStageById.get(account.id) === "technical_training",
+      ).length,
+    [accounts, accountHighestStageById],
+  );
+
+  const fieldEvaluationLocations = useMemo(
+    () =>
+      accounts.filter(
+        (account) => accountHighestStageById.get(account.id) === "field_evaluation",
+      ).length,
+    [accounts, accountHighestStageById],
+  );
+
+  const adoptionLocations = useMemo(
+    () =>
+      accounts.filter(
+        (account) => accountHighestStageById.get(account.id) === "adoption",
+      ).length,
+    [accounts, accountHighestStageById],
+  );
 
   const handleEditField = (field: keyof AccountEditForm, value: string) => {
     setEditForm((current) => ({
@@ -765,9 +987,7 @@ export default function CommercialIntelligenceHubPage() {
       .from("accounts")
       .update(payload)
       .eq("id", selectedAccount.id)
-      .select(
-        "id, source_system, source_file, source_sheet, source_row_number, account_key, long_name, retailer, name, address, city, state, zip, category, suppliers, is_active, created_at, updated_at, office_phone, row_crop_relevance",
-      )
+      .select(ACCOUNT_SELECT)
       .single();
 
     if (error) {
@@ -828,9 +1048,7 @@ export default function CommercialIntelligenceHubPage() {
       .from("accounts")
       .update(sharedPayload)
       .eq("retailer", retailerKey)
-      .select(
-        "id, source_system, source_file, source_sheet, source_row_number, account_key, long_name, retailer, name, address, city, state, zip, category, suppliers, is_active, created_at, updated_at, office_phone, row_crop_relevance",
-      );
+      .select(ACCOUNT_SELECT);
 
     if (error) {
       setMessage({
@@ -874,6 +1092,41 @@ export default function CommercialIntelligenceHubPage() {
     >
       <div className="grid gap-6">
         <SectionCard
+          title="General Account Summary"
+          description="High-level snapshot of the full CERTIS DCM database."
+        >
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Total Accounts
+              </div>
+              <div className="mt-1 text-4xl font-bold">{summaryCounts.totalAccounts}</div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Total Contacts
+              </div>
+              <div className="mt-1 text-4xl font-bold">{summaryCounts.totalContacts}</div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Total Kingpins
+              </div>
+              <div className="mt-1 text-4xl font-bold">{summaryCounts.totalKingpins}</div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Total Interactions
+              </div>
+              <div className="mt-1 text-4xl font-bold">{summaryCounts.totalInteractions}</div>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard
           title="Commercial Search"
           description="Search by account, retailer, city, state, supplier, category, or linked contact/kingpin name."
         >
@@ -908,11 +1161,8 @@ export default function CommercialIntelligenceHubPage() {
           <div className="mt-4 max-h-[28rem] space-y-3 overflow-y-auto pr-2">
             {accounts.map((account) => {
               const isSelected = selectedAccount?.id === account.id;
-              const category = normalizeForMatch(account.category);
-              const isHeadquarters =
-                category.includes("corporate") || category.includes("regional");
-              const displayRelevance = isHeadquarters
-                ? "relevant"
+              const displayRelevance = isHeadquartersAccount(account)
+                ? "hq / agronomy"
                 : account.row_crop_relevance || "unknown";
 
               return (
@@ -1007,60 +1257,79 @@ export default function CommercialIntelligenceHubPage() {
 
         <SectionCard
           title="Commercial Footprint"
-          description="Visible location buckets for the matched account set, with KPI emphasis on relevant locations only."
+          description="Coverage, activity, and stage progression across the matched account set."
         >
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Relevant Locations
-              </div>
-              <div className="mt-1 text-4xl font-bold">{relevantAccounts.length}</div>
-            </div>
-
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
               <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Total Locations
               </div>
-              <div className="mt-1 text-4xl font-bold">{accounts.length}</div>
+              <div className="mt-1 text-4xl font-bold">{totalLocations}</div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
               <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                % Relevant
+                Total Agronomy Locations
               </div>
-              <div className="mt-1 text-4xl font-bold">{percentRelevant}%</div>
+              <div className="mt-1 text-4xl font-bold">{totalAgronomyLocations}</div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
               <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Unclassified
+                Agronomy Coverage
               </div>
-              <div className="mt-1 text-4xl font-bold">{unknownAccounts.length}</div>
+              <div className="mt-1 text-4xl font-bold">{agronomyCoveragePercent}%</div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Locations Contacted
+              </div>
+              <div className="mt-1 text-4xl font-bold">{locationsContacted}</div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Active Locations (90d)
+              </div>
+              <div className="mt-1 text-4xl font-bold">{activeLocationsLast90}</div>
             </div>
           </div>
 
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800 xl:col-span-1">
               <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Partial / Mixed
+                Total Interactions
               </div>
-              <div className="mt-1 text-3xl font-bold">{partialAccounts.length}</div>
+              <div className="mt-1 text-4xl font-bold">{totalInteractionsForAccountSet}</div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
               <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Non-Relevant
+                Intro Locations
               </div>
-              <div className="mt-1 text-3xl font-bold">{nonRelevantAccounts.length}</div>
+              <div className="mt-1 text-4xl font-bold">{introStageLocations}</div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
               <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                HQ Override Included
+                Technical Training
               </div>
-              <div className="mt-1 text-sm font-semibold">
-                Corporate HQ and Regional HQ always count as relevant.
+              <div className="mt-1 text-4xl font-bold">{technicalTrainingLocations}</div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Field Evaluation
               </div>
+              <div className="mt-1 text-4xl font-bold">{fieldEvaluationLocations}</div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Adoption
+              </div>
+              <div className="mt-1 text-4xl font-bold">{adoptionLocations}</div>
             </div>
           </div>
         </SectionCard>
@@ -1128,8 +1397,8 @@ export default function CommercialIntelligenceHubPage() {
                         Row Crop Relevance
                       </div>
                       <div className="mt-1 font-semibold">
-                        {isRelevantAccount(selectedAccount)
-                          ? "relevant"
+                        {isHeadquartersAccount(selectedAccount)
+                          ? "hq / agronomy"
                           : selectedAccount.row_crop_relevance || "unknown"}
                       </div>
                     </div>
@@ -1194,7 +1463,7 @@ export default function CommercialIntelligenceHubPage() {
                       label="Category"
                       value={editForm.category}
                       onChange={(value) => handleEditField("category", value)}
-                      placeholder="Example: Coop, Retailer, Dealer"
+                      placeholder="Example: Coop, Agronomy, Retail"
                     />
                   </div>
 
