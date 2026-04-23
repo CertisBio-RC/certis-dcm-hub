@@ -114,6 +114,29 @@ type StageInteractionPoint = {
   stackIndex: number;
 };
 
+type EditProfileForm = {
+  firstName: string;
+  lastName: string;
+  company: string;
+  title: string;
+  email: string;
+  mobile: string;
+  officePhone: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  recordType: string;
+};
+
+type ResolvedAccountContext = {
+  mainAccount: AccountRecord | null;
+  totalLocations: number | null;
+  website: string;
+  supplier: string;
+  profile: DisplayProfile;
+};
+
 const STAGE_ORDER: StageKey[] = [
   "introduction",
   "technical_training",
@@ -129,6 +152,7 @@ const STAGE_LABELS: Record<StageKey, string> = {
 };
 
 const STAGE_OPTIONS = ["all", ...STAGE_ORDER] as const;
+const EDITABLE_RECORD_TYPES = ["Person", "Contact", "Kingpin"] as const;
 
 function normalizeSource(value: string | string[] | undefined): SourceType {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -196,6 +220,26 @@ function fallbackNameFromEmail(email: string | null | undefined): string {
     .trim();
 }
 
+function splitDisplayName(name: string | null | undefined): {
+  firstName: string;
+  lastName: string;
+} {
+  const cleaned = normalizeWhitespace(name);
+  if (!cleaned) {
+    return { firstName: "", lastName: "" };
+  }
+
+  const parts = cleaned.split(" ").filter(Boolean);
+  if (parts.length === 1) {
+    return { firstName: parts[0] ?? "", lastName: "" };
+  }
+
+  return {
+    firstName: parts.slice(0, -1).join(" "),
+    lastName: parts.slice(-1).join(" "),
+  };
+}
+
 function displayNameFromPerson(person: Partial<PersonRecord> | null | undefined): string {
   if (!person) return "";
 
@@ -233,6 +277,15 @@ function getRecordType(
   return raw;
 }
 
+function mapRecordTypeToDbValue(recordType: string): string {
+  const normalized = cleanText(recordType).toLowerCase();
+
+  if (normalized === "kingpin") return "kingpin";
+  if (normalized === "contact") return "contact";
+
+  return "person";
+}
+
 function toDisplayProfile(
   source: SourceType,
   person: PersonRecord | null,
@@ -249,6 +302,31 @@ function toDisplayProfile(
     officePhone: cleanText(person?.office_phone) || cleanText(legacy?.office_phone),
     supplier: cleanText(person?.supplier) || cleanText(legacy?.supplier),
     recordType: getRecordType(person, legacy),
+  };
+}
+
+function buildEditForm(
+  person: PersonRecord | null,
+  legacy: LegacyRecord | null,
+  profile: DisplayProfile | null,
+): EditProfileForm {
+  const fallbackName =
+    displayNameFromPerson(person) || displayNameFromLegacy(legacy) || profile?.name || "";
+  const splitName = splitDisplayName(fallbackName);
+
+  return {
+    firstName: cleanText(person?.first_name) || cleanText(legacy?.first_name) || splitName.firstName,
+    lastName: cleanText(person?.last_name) || cleanText(legacy?.last_name) || splitName.lastName,
+    company: cleanText(person?.company_name) || cleanText(legacy?.company_name) || "",
+    title: cleanText(person?.title) || cleanText(legacy?.title) || "",
+    email: cleanText(person?.email) || cleanText(legacy?.email) || "",
+    mobile: cleanText(person?.cell_phone) || cleanText(legacy?.cell_phone) || "",
+    officePhone: cleanText(person?.office_phone) || cleanText(legacy?.office_phone) || "",
+    address: cleanText(person?.address) || cleanText(legacy?.address) || "",
+    city: cleanText(person?.city) || "",
+    state: cleanText(person?.state) || cleanText(legacy?.state) || "",
+    zip: cleanText(person?.zip) || "",
+    recordType: profile?.recordType || getRecordType(person, legacy),
   };
 }
 
@@ -910,6 +988,69 @@ async function fetchInteractionsByIds(
   return (data as InteractionRecord[]) ?? [];
 }
 
+async function resolveAccountContext(
+  supabase: ReturnType<typeof createClient>,
+  source: SourceType,
+  person: PersonRecord | null,
+  legacy: LegacyRecord | null,
+): Promise<ResolvedAccountContext> {
+  const provisionalProfile = toDisplayProfile(source, person, legacy);
+
+  let resolvedMainAccount: AccountRecord | null = null;
+  let resolvedLocationCount: number | null = null;
+
+  if (person?.account_id) {
+    const { data: accountData, error: accountError } = await supabase
+      .from("accounts")
+      .select("*")
+      .eq("id", person.account_id)
+      .maybeSingle();
+
+    if (!accountError && accountData) {
+      resolvedMainAccount = accountData as AccountRecord;
+    }
+  }
+
+  if (!resolvedMainAccount) {
+    const candidateNames = getAccountCandidateNames(person, legacy, provisionalProfile);
+
+    resolvedMainAccount = await fetchBestAccountByCandidates(
+      supabase,
+      candidateNames,
+    );
+  }
+
+  resolvedLocationCount = await fetchLocationCountForAccountGroup(
+    supabase,
+    resolvedMainAccount,
+  );
+
+  const resolvedSupplier = resolveSupplier(
+    resolvedMainAccount,
+    person,
+    legacy,
+  );
+
+  const displayProfile: DisplayProfile = {
+    ...provisionalProfile,
+    supplier: resolvedSupplier,
+  };
+
+  const primaryWebsite = cleanText(resolvedMainAccount?.website);
+  const siblingWebsite = primaryWebsite
+    ? ""
+    : await fetchFallbackWebsiteForAccountGroup(supabase, resolvedMainAccount);
+  const finalWebsite = primaryWebsite || siblingWebsite;
+
+  return {
+    mainAccount: resolvedMainAccount,
+    totalLocations: resolvedLocationCount,
+    website: finalWebsite,
+    supplier: resolvedSupplier,
+    profile: displayProfile,
+  };
+}
+
 export default function ProfilePage() {
   const params = useParams<{ source: string; id: string }>();
   const source = normalizeSource(params?.source);
@@ -931,6 +1072,25 @@ export default function ProfilePage() {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [textFilter, setTextFilter] = useState<string>("");
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
+
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSaveError, setProfileSaveError] = useState("");
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState("");
+  const [editForm, setEditForm] = useState<EditProfileForm>({
+    firstName: "",
+    lastName: "",
+    company: "",
+    title: "",
+    email: "",
+    mobile: "",
+    officePhone: "",
+    address: "",
+    city: "",
+    state: "",
+    zip: "",
+    recordType: "Person",
+  });
 
   useEffect(() => {
     let isActive = true;
@@ -1026,66 +1186,21 @@ export default function ProfilePage() {
           ...contactInteractions,
         ]);
 
-        const provisionalProfile = toDisplayProfile(source, resolvedPerson, resolvedLegacy);
-
-        let resolvedMainAccount: AccountRecord | null = null;
-        let resolvedLocationCount: number | null = null;
-
-        if (resolvedPerson?.account_id) {
-          const { data: accountData, error: accountError } = await supabase
-            .from("accounts")
-            .select("*")
-            .eq("id", resolvedPerson.account_id)
-            .maybeSingle();
-
-          if (!accountError && accountData) {
-            resolvedMainAccount = accountData as AccountRecord;
-          }
-        }
-
-        if (!resolvedMainAccount) {
-          const candidateNames = getAccountCandidateNames(
-            resolvedPerson,
-            resolvedLegacy,
-            provisionalProfile,
-          );
-
-          resolvedMainAccount = await fetchBestAccountByCandidates(
-            supabase,
-            candidateNames,
-          );
-        }
-
-        resolvedLocationCount = await fetchLocationCountForAccountGroup(
+        const accountContext = await resolveAccountContext(
           supabase,
-          resolvedMainAccount,
-        );
-
-        const resolvedSupplier = resolveSupplier(
-          resolvedMainAccount,
+          source,
           resolvedPerson,
           resolvedLegacy,
         );
-
-        const displayProfile: DisplayProfile = {
-          ...provisionalProfile,
-          supplier: resolvedSupplier,
-        };
-
-        const primaryWebsite = cleanText(resolvedMainAccount?.website);
-        const siblingWebsite = primaryWebsite
-          ? ""
-          : await fetchFallbackWebsiteForAccountGroup(supabase, resolvedMainAccount);
-        const finalWebsite = primaryWebsite || siblingWebsite;
 
         if (!isActive) return;
 
         setPersonRecord(resolvedPerson);
         setLegacyRecord(resolvedLegacy);
-        setMainAccount(resolvedMainAccount);
-        setResolvedWebsite(finalWebsite);
-        setTotalLocations(resolvedLocationCount);
-        setProfile(displayProfile);
+        setMainAccount(accountContext.mainAccount);
+        setResolvedWebsite(accountContext.website);
+        setTotalLocations(accountContext.totalLocations);
+        setProfile(accountContext.profile);
         setInteractions(mergedInteractions);
         setExpandedIds([]);
         setLoading(false);
@@ -1105,6 +1220,11 @@ export default function ProfilePage() {
       isActive = false;
     };
   }, [id, source, supabase]);
+
+  useEffect(() => {
+    if (!profile) return;
+    setEditForm(buildEditForm(personRecord, legacyRecord, profile));
+  }, [personRecord, legacyRecord, profile]);
 
   const availableTypes = useMemo(() => {
     const types = Array.from(
@@ -1152,12 +1272,133 @@ export default function ProfilePage() {
     return addressParts.join(", ");
   }, [personRecord, legacyRecord]);
 
+  const editResolvedAddress = useMemo(() => {
+    const addressParts = [
+      cleanText(editForm.address),
+      cleanText(editForm.city),
+      cleanText(editForm.state),
+      cleanText(editForm.zip),
+    ].filter(Boolean);
+
+    return addressParts.join(", ");
+  }, [editForm.address, editForm.city, editForm.state, editForm.zip]);
+
   const toggleExpanded = (interactionId: string) => {
     setExpandedIds((current) =>
       current.includes(interactionId)
         ? current.filter((idValue) => idValue !== interactionId)
         : [...current, interactionId],
     );
+  };
+
+  const updateEditField = (field: keyof EditProfileForm, value: string) => {
+    setEditForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const handleEditProfile = () => {
+    setProfileSaveError("");
+    setProfileSaveSuccess("");
+    setEditForm(buildEditForm(personRecord, legacyRecord, profile));
+    setIsEditingProfile(true);
+  };
+
+  const handleCancelEdit = () => {
+    setProfileSaveError("");
+    setProfileSaveSuccess("");
+    setEditForm(buildEditForm(personRecord, legacyRecord, profile));
+    setIsEditingProfile(false);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!profile) return;
+
+    setIsSavingProfile(true);
+    setProfileSaveError("");
+    setProfileSaveSuccess("");
+
+    try {
+      const firstName = cleanText(editForm.firstName);
+      const lastName = cleanText(editForm.lastName);
+      const fullName = joinedName(firstName, lastName);
+
+      const basePayload = {
+        first_name: firstName || null,
+        last_name: lastName || null,
+        full_name: fullName || null,
+        company_name: cleanText(editForm.company) || null,
+        title: cleanText(editForm.title) || null,
+        email: cleanText(editForm.email) || null,
+        office_phone: cleanText(editForm.officePhone) || null,
+        cell_phone: cleanText(editForm.mobile) || null,
+        address: cleanText(editForm.address) || null,
+        city: cleanText(editForm.city) || null,
+        state: cleanText(editForm.state) || null,
+        zip: cleanText(editForm.zip) || null,
+        contact_type: mapRecordTypeToDbValue(editForm.recordType),
+      };
+
+      let savedPerson: PersonRecord | null = null;
+
+      if (personRecord?.id) {
+        const updatePayload = {
+          ...basePayload,
+          account_id: personRecord.account_id ?? mainAccount?.id ?? null,
+          supplier: personRecord.supplier ?? cleanText(legacyRecord?.supplier) || null,
+        };
+
+        const { data, error: updateError } = await supabase
+          .from("people")
+          .update(updatePayload)
+          .eq("id", personRecord.id)
+          .select("*")
+          .single();
+
+        if (updateError) throw updateError;
+        savedPerson = data as PersonRecord;
+      } else {
+        const insertPayload = {
+          ...basePayload,
+          account_id: mainAccount?.id ?? null,
+          supplier: cleanText(legacyRecord?.supplier) || null,
+          national_name: cleanText(legacyRecord?.national_name) || null,
+          person_name: cleanText(legacyRecord?.person_name) || null,
+          corporate_kingpin: cleanText(legacyRecord?.corporate_kingpin) || null,
+          regional_kingpin: cleanText(legacyRecord?.regional_kingpin) || null,
+        };
+
+        const { data, error: insertError } = await supabase
+          .from("people")
+          .insert(insertPayload)
+          .select("*")
+          .single();
+
+        if (insertError) throw insertError;
+        savedPerson = data as PersonRecord;
+      }
+
+      const accountContext = await resolveAccountContext(
+        supabase,
+        source,
+        savedPerson,
+        legacyRecord,
+      );
+
+      setPersonRecord(savedPerson);
+      setMainAccount(accountContext.mainAccount);
+      setResolvedWebsite(accountContext.website);
+      setTotalLocations(accountContext.totalLocations);
+      setProfile(accountContext.profile);
+      setEditForm(buildEditForm(savedPerson, legacyRecord, accountContext.profile));
+      setIsEditingProfile(false);
+      setProfileSaveSuccess("Profile updated successfully.");
+    } catch (err) {
+      setProfileSaveError(extractErrorMessage(err));
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   if (loading) {
@@ -1236,7 +1477,7 @@ export default function ProfilePage() {
         <div className="space-y-6">
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <Link
                   href="/search-contacts"
                   className="text-sm font-medium text-blue-700 hover:underline dark:text-blue-400"
@@ -1244,68 +1485,352 @@ export default function ProfilePage() {
                   ← Back to Search
                 </Link>
 
-                <h1 className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
-                  {profile.name}
-                </h1>
+                {!isEditingProfile ? (
+                  <>
+                    <h1 className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
+                      {profile.name}
+                    </h1>
 
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                  {profile.recordType}
-                  {profile.company ? ` • ${profile.company}` : ""}
-                  {profile.title ? ` • ${profile.title}` : ""}
-                </p>
+                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                      {profile.recordType}
+                      {profile.company ? ` • ${profile.company}` : ""}
+                      {profile.title ? ` • ${profile.title}` : ""}
+                    </p>
 
-                <div className="mt-4 flex flex-wrap gap-3">
-                  {profile.email ? (
-                    <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
-                      <ContactValueLink kind="email" value={profile.email} />
-                    </span>
-                  ) : null}
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      {profile.email ? (
+                        <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
+                          <ContactValueLink kind="email" value={profile.email} />
+                        </span>
+                      ) : null}
 
-                  {resolvedAddress ? (
-                    <span className="inline-flex items-center rounded-full border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm dark:border-blue-500/40 dark:bg-blue-900/20">
-                      <AddressValueLink
-                        value={resolvedAddress}
-                        address={cleanText(personRecord?.address) || cleanText(legacyRecord?.address)}
-                        city={cleanText(personRecord?.city)}
-                        state={cleanText(personRecord?.state) || cleanText(legacyRecord?.state)}
-                        zip={cleanText(personRecord?.zip)}
-                        label={profile.name}
-                        context={profile.company}
-                        showPin
-                      />
-                    </span>
-                  ) : null}
+                      {resolvedAddress ? (
+                        <span className="inline-flex items-center rounded-full border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm dark:border-blue-500/40 dark:bg-blue-900/20">
+                          <AddressValueLink
+                            value={resolvedAddress}
+                            address={cleanText(personRecord?.address) || cleanText(legacyRecord?.address)}
+                            city={cleanText(personRecord?.city)}
+                            state={cleanText(personRecord?.state) || cleanText(legacyRecord?.state)}
+                            zip={cleanText(personRecord?.zip)}
+                            label={profile.name}
+                            context={profile.company}
+                            showPin
+                          />
+                        </span>
+                      ) : null}
 
-                  {profile.mobile ? (
-                    <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
-                      <ContactValueLink kind="mobile" value={profile.mobile} />
-                    </span>
-                  ) : null}
+                      {profile.mobile ? (
+                        <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
+                          <ContactValueLink kind="mobile" value={profile.mobile} />
+                        </span>
+                      ) : null}
 
-                  {profile.officePhone ? (
-                    <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
-                      <ContactValueLink kind="office" value={profile.officePhone} />
-                    </span>
-                  ) : null}
-                </div>
+                      {profile.officePhone ? (
+                        <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
+                          <ContactValueLink kind="office" value={profile.officePhone} />
+                        </span>
+                      ) : null}
+                    </div>
+                  </>
+                ) : (
+                  <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/60 p-4 dark:border-blue-900/40 dark:bg-blue-950/20">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label
+                          htmlFor="firstName"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                        >
+                          First Name
+                        </label>
+                        <input
+                          id="firstName"
+                          type="text"
+                          value={editForm.firstName}
+                          onChange={(event) => updateEditField("firstName", event.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="lastName"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                        >
+                          Last Name
+                        </label>
+                        <input
+                          id="lastName"
+                          type="text"
+                          value={editForm.lastName}
+                          onChange={(event) => updateEditField("lastName", event.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="recordType"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                        >
+                          Record Type
+                        </label>
+                        <select
+                          id="recordType"
+                          value={editForm.recordType}
+                          onChange={(event) => updateEditField("recordType", event.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        >
+                          {EDITABLE_RECORD_TYPES.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="company"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                        >
+                          Company
+                        </label>
+                        <input
+                          id="company"
+                          type="text"
+                          value={editForm.company}
+                          onChange={(event) => updateEditField("company", event.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label
+                          htmlFor="title"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                        >
+                          Title
+                        </label>
+                        <input
+                          id="title"
+                          type="text"
+                          value={editForm.title}
+                          onChange={(event) => updateEditField("title", event.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label
+                          htmlFor="email"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                        >
+                          Email
+                        </label>
+                        <input
+                          id="email"
+                          type="email"
+                          value={editForm.email}
+                          onChange={(event) => updateEditField("email", event.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="mobile"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                        >
+                          Mobile
+                        </label>
+                        <input
+                          id="mobile"
+                          type="text"
+                          value={editForm.mobile}
+                          onChange={(event) => updateEditField("mobile", event.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="officePhone"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                        >
+                          Office Phone
+                        </label>
+                        <input
+                          id="officePhone"
+                          type="text"
+                          value={editForm.officePhone}
+                          onChange={(event) => updateEditField("officePhone", event.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label
+                          htmlFor="address"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                        >
+                          Address
+                        </label>
+                        <input
+                          id="address"
+                          type="text"
+                          value={editForm.address}
+                          onChange={(event) => updateEditField("address", event.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="city"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                        >
+                          City
+                        </label>
+                        <input
+                          id="city"
+                          type="text"
+                          value={editForm.city}
+                          onChange={(event) => updateEditField("city", event.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="state"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                        >
+                          State
+                        </label>
+                        <input
+                          id="state"
+                          type="text"
+                          value={editForm.state}
+                          onChange={(event) => updateEditField("state", event.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="zip"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                        >
+                          ZIP
+                        </label>
+                        <input
+                          id="zip"
+                          type="text"
+                          value={editForm.zip}
+                          onChange={(event) => updateEditField("zip", event.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </div>
+                    </div>
+
+                    {editResolvedAddress ? (
+                      <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                        {editResolvedAddress}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                {(profileSaveError || profileSaveSuccess) && !isEditingProfile ? (
+                  <div className="mt-4">
+                    {profileSaveError ? (
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                        {profileSaveError}
+                      </div>
+                    ) : null}
+
+                    {profileSaveSuccess ? (
+                      <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-900/50 dark:bg-green-950/30 dark:text-green-200">
+                        {profileSaveSuccess}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
 
               <div className="flex flex-col gap-3 xl:items-end">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-800/70">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Record Source
-                  </div>
-                  <div className="mt-1 font-semibold text-slate-900 dark:text-white">
-                    {source === "people"
-                      ? "People Table"
-                      : source === "contacts"
-                        ? "Contacts Table"
-                        : "Kingpins Table"}
-                  </div>
-                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    {personRecord?.id ? "Unified people match found" : "Legacy record only"}
-                  </div>
-                </div>
+                {!isEditingProfile ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleEditProfile}
+                      className="inline-flex items-center rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-800"
+                    >
+                      Edit Profile
+                    </button>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-800/70">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Record Source
+                      </div>
+                      <div className="mt-1 font-semibold text-slate-900 dark:text-white">
+                        {source === "people"
+                          ? "People Table"
+                          : source === "contacts"
+                            ? "Contacts Table"
+                            : "Kingpins Table"}
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        {personRecord?.id ? "Unified people match found" : "Legacy record only"}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap gap-2 xl:justify-end">
+                      <button
+                        type="button"
+                        onClick={handleSaveProfile}
+                        disabled={isSavingProfile}
+                        className="inline-flex items-center rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isSavingProfile ? "Saving..." : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        disabled={isSavingProfile}
+                        className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+
+                    {profileSaveError ? (
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                        {profileSaveError}
+                      </div>
+                    ) : null}
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-800/70">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Record Source
+                      </div>
+                      <div className="mt-1 font-semibold text-slate-900 dark:text-white">
+                        {source === "people"
+                          ? "People Table"
+                          : source === "contacts"
+                            ? "Contacts Table"
+                            : "Kingpins Table"}
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        {personRecord?.id
+                          ? "Saving changes back to people"
+                          : "Legacy profile will create a new people row"}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
