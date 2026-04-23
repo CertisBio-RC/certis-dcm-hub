@@ -1343,11 +1343,11 @@ export default function ProfilePage() {
       let savedPerson: PersonRecord | null = null;
 
       if (personRecord?.id) {
-        const updatePayload = {
-          ...basePayload,
-          account_id: personRecord.account_id ?? mainAccount?.id ?? null,
-          supplier: personRecord.supplier ?? cleanText(legacyRecord?.supplier) || null,
-        };
+const updatePayload = {
+  ...basePayload,
+  account_id: personRecord.account_id ?? mainAccount?.id ?? null,
+  supplier: personRecord.supplier ?? (cleanText(legacyRecord?.supplier) || null),
+};
 
         const { data, error: updateError } = await supabase
           .from("people")
