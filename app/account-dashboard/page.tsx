@@ -34,6 +34,7 @@ type AccountRow = {
   created_at: string | null;
   updated_at: string | null;
   office_phone: string | null;
+  row_crop_relevance: string | null;
 };
 
 type PeopleRow = {
@@ -79,6 +80,7 @@ type AccountEditForm = {
   city: string;
   state: string;
   zip: string;
+  row_crop_relevance: string;
 };
 
 function normalizeValue(value: string | null | undefined): string {
@@ -157,6 +159,7 @@ function buildAccountSearchFields(account: AccountRow): Array<string | null | un
     account.suppliers,
     account.office_phone,
     account.account_key,
+    account.row_crop_relevance,
   ];
 }
 
@@ -243,7 +246,20 @@ function buildEditForm(account: AccountRow | null): AccountEditForm {
     city: normalizeValue(account?.city),
     state: normalizeValue(account?.state),
     zip: normalizeValue(account?.zip),
+    row_crop_relevance: normalizeValue(account?.row_crop_relevance) || "unknown",
   };
+}
+
+function isRelevantAccount(account: AccountRow): boolean {
+  const relevance = normalizeForMatch(account.row_crop_relevance || "unknown");
+  const category = normalizeForMatch(account.category);
+
+  const isHeadquarters =
+    category.includes("corporate") || category.includes("regional");
+
+  if (isHeadquarters) return true;
+
+  return relevance === "relevant";
 }
 
 export default function CommercialIntelligenceHubPage() {
@@ -280,7 +296,7 @@ export default function CommercialIntelligenceHubPage() {
           supabase
             .from("accounts")
             .select(
-              "id, source_system, source_file, source_sheet, source_row_number, account_key, long_name, retailer, name, address, city, state, zip, category, suppliers, is_active, created_at, updated_at, office_phone",
+              "id, source_system, source_file, source_sheet, source_row_number, account_key, long_name, retailer, name, address, city, state, zip, category, suppliers, is_active, created_at, updated_at, office_phone, row_crop_relevance",
             )
             .limit(2500),
           supabase
@@ -473,6 +489,41 @@ export default function CommercialIntelligenceHubPage() {
     setEditForm(buildEditForm(selectedAccount));
   }, [selectedAccount, isEditingAccount]);
 
+  const relevantAccounts = useMemo(
+    () => accounts.filter((account) => isRelevantAccount(account)),
+    [accounts],
+  );
+
+  const partialAccounts = useMemo(
+    () =>
+      accounts.filter(
+        (account) => normalizeForMatch(account.row_crop_relevance) === "partial",
+      ),
+    [accounts],
+  );
+
+  const nonRelevantAccounts = useMemo(
+    () =>
+      accounts.filter(
+        (account) => normalizeForMatch(account.row_crop_relevance) === "not_relevant",
+      ),
+    [accounts],
+  );
+
+  const unknownAccounts = useMemo(
+    () =>
+      accounts.filter((account) => {
+        const relevance = normalizeForMatch(account.row_crop_relevance);
+        return !relevance || relevance === "unknown";
+      }),
+    [accounts],
+  );
+
+  const percentRelevant =
+    accounts.length > 0
+      ? Math.round((relevantAccounts.length / accounts.length) * 100)
+      : 0;
+
   const contactCount = linkedPeople.filter((person) => person.source_table === "contacts").length;
   const kingpinCount = linkedPeople.filter((person) => person.source_table === "kingpins").length;
   const otherCount = Math.max(linkedPeople.length - contactCount - kingpinCount, 0);
@@ -515,6 +566,7 @@ export default function CommercialIntelligenceHubPage() {
       city: editForm.city || null,
       state: editForm.state || null,
       zip: editForm.zip || null,
+      row_crop_relevance: editForm.row_crop_relevance || "unknown",
     };
 
     const { data, error } = await supabase
@@ -522,7 +574,7 @@ export default function CommercialIntelligenceHubPage() {
       .update(payload)
       .eq("id", selectedAccount.id)
       .select(
-        "id, source_system, source_file, source_sheet, source_row_number, account_key, long_name, retailer, name, address, city, state, zip, category, suppliers, is_active, created_at, updated_at, office_phone",
+        "id, source_system, source_file, source_sheet, source_row_number, account_key, long_name, retailer, name, address, city, state, zip, category, suppliers, is_active, created_at, updated_at, office_phone, row_crop_relevance",
       )
       .single();
 
@@ -577,6 +629,7 @@ export default function CommercialIntelligenceHubPage() {
     const sharedPayload = {
       suppliers: editForm.suppliers || null,
       category: editForm.category || null,
+      row_crop_relevance: editForm.row_crop_relevance || "unknown",
     };
 
     const { data, error } = await supabase
@@ -584,7 +637,7 @@ export default function CommercialIntelligenceHubPage() {
       .update(sharedPayload)
       .eq("retailer", retailerKey)
       .select(
-        "id, source_system, source_file, source_sheet, source_row_number, account_key, long_name, retailer, name, address, city, state, zip, category, suppliers, is_active, created_at, updated_at, office_phone",
+        "id, source_system, source_file, source_sheet, source_row_number, account_key, long_name, retailer, name, address, city, state, zip, category, suppliers, is_active, created_at, updated_at, office_phone, row_crop_relevance",
       );
 
     if (error) {
@@ -664,6 +717,13 @@ export default function CommercialIntelligenceHubPage() {
           <div className="mt-4 max-h-[65vh] space-y-3 overflow-y-auto pr-2">
             {accounts.map((account) => {
               const isSelected = selectedAccount?.id === account.id;
+              const relevance = normalizeForMatch(account.row_crop_relevance);
+              const category = normalizeForMatch(account.category);
+              const isHeadquarters =
+                category.includes("corporate") || category.includes("regional");
+              const displayRelevance = isHeadquarters
+                ? "relevant"
+                : account.row_crop_relevance || "unknown";
 
               return (
                 <button
@@ -683,6 +743,9 @@ export default function CommercialIntelligenceHubPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="font-bold">{getAccountDisplayName(account)}</div>
                     {account.category ? <RecordBadge>{account.category}</RecordBadge> : null}
+                    {displayRelevance ? (
+                      <RecordBadge>{displayRelevance}</RecordBadge>
+                    ) : null}
                   </div>
 
                   <div className="mt-2 text-sm">
@@ -763,6 +826,28 @@ export default function CommercialIntelligenceHubPage() {
                       </div>
                     </div>
 
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                        <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Row Crop Relevance
+                        </div>
+                        <div className="mt-1 font-semibold">
+                          {isRelevantAccount(selectedAccount)
+                            ? "relevant"
+                            : selectedAccount.row_crop_relevance || "unknown"}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                        <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Office Phone
+                        </div>
+                        <div className="mt-1 font-semibold">
+                          <ContactValueLink kind="office" value={selectedAccount.office_phone} />
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
                       <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         Address
@@ -792,10 +877,10 @@ export default function CommercialIntelligenceHubPage() {
 
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
                         <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Office Phone
+                          Account Key
                         </div>
                         <div className="mt-1 font-semibold">
-                          <ContactValueLink kind="office" value={selectedAccount.office_phone} />
+                          {selectedAccount.account_key || "Not listed"}
                         </div>
                       </div>
                     </div>
@@ -853,9 +938,29 @@ export default function CommercialIntelligenceHubPage() {
                       />
                     </div>
 
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-sm font-semibold">
+                          Row Crop Relevance
+                        </label>
+                        <select
+                          value={editForm.row_crop_relevance}
+                          onChange={(event) =>
+                            handleEditField("row_crop_relevance", event.target.value)
+                          }
+                          className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-emerald-500 dark:border-slate-600 dark:bg-slate-900"
+                        >
+                          <option value="relevant">relevant</option>
+                          <option value="partial">partial</option>
+                          <option value="not_relevant">not_relevant</option>
+                          <option value="unknown">unknown</option>
+                        </select>
+                      </div>
+                    </div>
+
                     <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
                       Use <span className="font-semibold">Save This Location</span> for local fields
-                      like phone or address. Use <span className="font-semibold">Save Entire Company</span> for shared fields like supplier and category.
+                      like phone or address. Use <span className="font-semibold">Save Entire Company</span> for shared fields like supplier, category, and row crop relevance.
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -882,6 +987,66 @@ export default function CommercialIntelligenceHubPage() {
                 tone="info"
               />
             )}
+          </SectionCard>
+
+          <SectionCard
+            title="Commercial Footprint"
+            description="Visible location buckets for the matched account set, with KPI emphasis on relevant locations only."
+          >
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Relevant Locations
+                </div>
+                <div className="mt-1 text-4xl font-bold">{relevantAccounts.length}</div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Total Locations
+                </div>
+                <div className="mt-1 text-4xl font-bold">{accounts.length}</div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  % Relevant
+                </div>
+                <div className="mt-1 text-4xl font-bold">{percentRelevant}%</div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Unclassified
+                </div>
+                <div className="mt-1 text-4xl font-bold">{unknownAccounts.length}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Partial / Mixed
+                </div>
+                <div className="mt-1 text-3xl font-bold">{partialAccounts.length}</div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Non-Relevant
+                </div>
+                <div className="mt-1 text-3xl font-bold">{nonRelevantAccounts.length}</div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  HQ Override Included
+                </div>
+                <div className="mt-1 text-sm font-semibold">
+                  Corporate HQ and Regional HQ always count as relevant.
+                </div>
+              </div>
+            </div>
           </SectionCard>
 
           <div className="grid gap-6 md:grid-cols-2">
