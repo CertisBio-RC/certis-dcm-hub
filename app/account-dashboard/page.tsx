@@ -41,14 +41,11 @@ type PeopleRow = {
   id: string;
   account_id: string | null;
   full_name: string | null;
-  person_name: string | null;
   first_name: string | null;
   last_name: string | null;
   national_name: string | null;
   company_name: string | null;
   supplier: string | null;
-  corporate_kingpin: string | null;
-  regional_kingpin: string | null;
   title: string | null;
   address: string | null;
   city: string | null;
@@ -58,6 +55,9 @@ type PeopleRow = {
   cell_phone: string | null;
   email: string | null;
   contact_type: string | null;
+  is_kingpin: boolean | null;
+  legacy_contact_id: string | null;
+  legacy_kingpin_id: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -126,7 +126,7 @@ const ACCOUNT_SELECT =
   "id, source_system, source_file, source_sheet, source_row_number, account_key, long_name, retailer, name, address, city, state, zip, category, suppliers, is_active, created_at, updated_at, office_phone, row_crop_relevance";
 
 const PEOPLE_SELECT =
-  "id, account_id, full_name, person_name, first_name, last_name, national_name, company_name, supplier, corporate_kingpin, regional_kingpin, title, address, city, state, zip, office_phone, cell_phone, email, contact_type, created_at, updated_at";
+  "id, account_id, full_name, first_name, last_name, national_name, company_name, supplier, title, address, city, state, zip, office_phone, cell_phone, email, contact_type, is_kingpin, legacy_contact_id, legacy_kingpin_id, created_at, updated_at";
 
 const LEGACY_LINK_SELECT =
   "id, email, corporate_kingpin, regional_kingpin, company_name, national_name, supplier, state";
@@ -262,10 +262,7 @@ function joinedName(
 function getPersonDisplayName(person: PeopleRow): string {
   return (
     normalizeValue(person.full_name) ||
-    normalizeValue(person.person_name) ||
     joinedName(person.first_name, person.last_name) ||
-    normalizeValue(person.regional_kingpin) ||
-    normalizeValue(person.corporate_kingpin) ||
     normalizeValue(person.email) ||
     "Unnamed Person"
   );
@@ -304,11 +301,8 @@ function getAccountAddress(account: AccountRow | null): string {
 function buildPeopleSearchFields(person: PeopleRow): Array<string | null | undefined> {
   return [
     person.full_name,
-    person.person_name,
     person.first_name,
     person.last_name,
-    person.corporate_kingpin,
-    person.regional_kingpin,
     person.company_name,
     person.national_name,
     person.supplier,
@@ -357,13 +351,9 @@ function isLinkedPerson(
   person: PeopleRow,
   manualLinks: PersonAccountLinkRow[],
 ): boolean {
-  if (hasManualAccountLink(account, person, manualLinks)) {
-    return true;
-  }
+  if (hasManualAccountLink(account, person, manualLinks)) return true;
 
-  if (person.account_id && account.id === person.account_id) {
-    return true;
-  }
+  if (person.account_id && account.id === person.account_id) return true;
 
   const accountNames = uniqueNonEmpty([
     account.long_name,
@@ -385,19 +375,15 @@ function isLinkedPerson(
     !normalizeForMatch(person.state) ||
     normalizeForMatch(account.state) === normalizeForMatch(person.state);
 
-  if (!stateMatch) {
-    return false;
-  }
+  if (!stateMatch) return false;
 
   const strongNameMatch = accountNames.some((accountName) =>
-    personCompanies.some((personName) =>
-      companyNamesStronglyMatch(personName, accountName),
+    personCompanies.some((personCompany) =>
+      companyNamesStronglyMatch(personCompany, accountName),
     ),
   );
 
-  if (!strongNameMatch) {
-    return false;
-  }
+  if (!strongNameMatch) return false;
 
   const accountSuppliers = splitSupplierTokens(account.suppliers);
   const personSuppliers = splitSupplierTokens(person.supplier);
@@ -407,9 +393,7 @@ function isLinkedPerson(
       personSuppliers.includes(supplier),
     );
 
-    if (!supplierOverlap) {
-      return false;
-    }
+    if (!supplierOverlap) return false;
   }
 
   return true;
@@ -580,44 +564,36 @@ async function fetchAllRows<T>(
 function getLegacyNameCandidates(person: PeopleRow): string[] {
   return uniqueNonEmpty([
     person.full_name,
-    person.person_name,
     joinedName(person.first_name, person.last_name),
-    person.corporate_kingpin,
-    person.regional_kingpin,
   ]);
 }
 
 function matchesLegacyRowToPerson(person: PeopleRow, row: LegacyLinkRow): boolean {
+  if (person.legacy_contact_id && person.legacy_contact_id === row.id) return true;
+  if (person.legacy_kingpin_id && person.legacy_kingpin_id === row.id) return true;
+
   const personEmail = normalizeForMatch(person.email);
   const rowEmail = normalizeForMatch(row.email);
 
-  if (personEmail && rowEmail && personEmail === rowEmail) {
-    return true;
-  }
+  if (personEmail && rowEmail && personEmail === rowEmail) return true;
 
   const personNames = getLegacyNameCandidates(person);
   const rowNames = uniqueNonEmpty([row.corporate_kingpin, row.regional_kingpin]);
 
-  if (personNames.length === 0 || rowNames.length === 0) {
-    return false;
-  }
+  if (personNames.length === 0 || rowNames.length === 0) return false;
 
   const stateMatch =
     !normalizeForMatch(person.state) ||
     !normalizeForMatch(row.state) ||
     normalizeForMatch(person.state) === normalizeForMatch(row.state);
 
-  if (!stateMatch) {
-    return false;
-  }
+  if (!stateMatch) return false;
 
   const nameMatch = personNames.some((personName) =>
     rowNames.some((rowName) => normalizeForMatch(personName) === normalizeForMatch(rowName)),
   );
 
-  if (!nameMatch) {
-    return false;
-  }
+  if (!nameMatch) return false;
 
   const personCompanies = uniqueNonEmpty([person.company_name, person.national_name]);
   const rowCompanies = uniqueNonEmpty([row.company_name, row.national_name]);
@@ -629,9 +605,7 @@ function matchesLegacyRowToPerson(person: PeopleRow, row: LegacyLinkRow): boolea
       ),
     );
 
-    if (!companyMatch) {
-      return false;
-    }
+    if (!companyMatch) return false;
   }
 
   return true;
@@ -799,18 +773,17 @@ export default function CommercialIntelligenceHubPage() {
           )
           .limit(300);
 
-        if (directAccountResponse.error) {
-          throw directAccountResponse.error;
-        }
+        if (directAccountResponse.error) throw directAccountResponse.error;
 
         const matchedPeopleFromQuery = allPeople.filter((person) =>
           searchIncludes(buildPeopleSearchFields(person), q),
         );
 
         const directlyLinkedAccountsFromPeople = allAccounts.filter((account) =>
-          matchedPeopleFromQuery.some((person) =>
-            hasManualAccountLink(account, person, manualLinks) ||
-            (person.account_id && person.account_id === account.id),
+          matchedPeopleFromQuery.some(
+            (person) =>
+              hasManualAccountLink(account, person, manualLinks) ||
+              (person.account_id && person.account_id === account.id),
           ),
         );
 
@@ -1077,8 +1050,10 @@ export default function CommercialIntelligenceHubPage() {
     normalizeForMatch(person.contact_type).includes("contact"),
   ).length;
 
-  const kingpinCount = linkedPeople.filter((person) =>
-    normalizeForMatch(person.contact_type).includes("kingpin"),
+  const kingpinCount = linkedPeople.filter(
+    (person) =>
+      person.is_kingpin === true ||
+      normalizeForMatch(person.contact_type).includes("kingpin"),
   ).length;
 
   const otherCount = Math.max(linkedPeople.length - contactCount - kingpinCount, 0);
@@ -1777,7 +1752,9 @@ export default function CommercialIntelligenceHubPage() {
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="text-2xl font-bold">{getPersonDisplayName(person)}</div>
-                    <RecordBadge>{person.contact_type || "person"}</RecordBadge>
+                    <RecordBadge>
+                      {person.is_kingpin ? "Kingpin" : person.contact_type || "Person"}
+                    </RecordBadge>
                   </div>
 
                   <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
@@ -1838,8 +1815,8 @@ export default function CommercialIntelligenceHubPage() {
         >
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-700 dark:bg-slate-800">
             This page now prioritizes manual person-account links, then direct account_id links,
-            then fuzzy company matching. This creates a durable override layer for accounts like
-            Hull Cooperative where person/company naming does not always align cleanly.
+            then fuzzy company matching. Legacy contacts and kingpins are used only to bridge
+            older interaction records into the current people backbone.
           </div>
         </SectionCard>
       </div>
