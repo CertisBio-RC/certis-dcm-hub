@@ -73,6 +73,17 @@ type LegacyLinkRow = {
   state: string | null;
 };
 
+type PersonAccountLinkRow = {
+  id: string;
+  person_id: string;
+  account_id: string;
+  link_type: string | null;
+  is_primary: boolean | null;
+  notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
 type InteractionRow = {
   id: string;
   user_id: string | null;
@@ -119,6 +130,9 @@ const PEOPLE_SELECT =
 
 const LEGACY_LINK_SELECT =
   "id, email, corporate_kingpin, regional_kingpin, company_name, national_name, supplier, state";
+
+const PERSON_ACCOUNT_LINK_SELECT =
+  "id, person_id, account_id, link_type, is_primary, notes, created_at, updated_at";
 
 const INTERACTION_SELECT =
   "id, user_id, contact_id, date, type, summary, details, outcome, follow_up_date, created_at, stage";
@@ -231,7 +245,7 @@ function companyNamesStronglyMatch(
     return true;
   }
 
-  if (shorter.length >= 12 && longer.includes(shorter) && sharedWords >= 1) {
+  if (shorter.length >= 8 && longer.includes(shorter) && sharedWords >= 1) {
     return true;
   }
 
@@ -299,6 +313,7 @@ function buildPeopleSearchFields(person: PeopleRow): Array<string | null | undef
     person.national_name,
     person.supplier,
     person.state,
+    person.city,
     person.title,
     person.email,
     person.address,
@@ -327,7 +342,25 @@ function isAgronomyAccount(account: AccountRow): boolean {
   return category.includes("agronomy");
 }
 
-function isLinkedPerson(account: AccountRow, person: PeopleRow): boolean {
+function hasManualAccountLink(
+  account: AccountRow,
+  person: PeopleRow,
+  manualLinks: PersonAccountLinkRow[],
+): boolean {
+  return manualLinks.some(
+    (link) => link.account_id === account.id && link.person_id === person.id,
+  );
+}
+
+function isLinkedPerson(
+  account: AccountRow,
+  person: PeopleRow,
+  manualLinks: PersonAccountLinkRow[],
+): boolean {
+  if (hasManualAccountLink(account, person, manualLinks)) {
+    return true;
+  }
+
   if (person.account_id && account.id === person.account_id) {
     return true;
   }
@@ -358,7 +391,7 @@ function isLinkedPerson(account: AccountRow, person: PeopleRow): boolean {
 
   const strongNameMatch = accountNames.some((accountName) =>
     personCompanies.some((personName) =>
-      companyNamesStronglyMatch(accountName, personName),
+      companyNamesStronglyMatch(personName, accountName),
     ),
   );
 
@@ -619,6 +652,7 @@ export default function CommercialIntelligenceHubPage() {
   const [allPeople, setAllPeople] = useState<PeopleRow[]>([]);
   const [legacyContacts, setLegacyContacts] = useState<LegacyLinkRow[]>([]);
   const [legacyKingpins, setLegacyKingpins] = useState<LegacyLinkRow[]>([]);
+  const [manualLinks, setManualLinks] = useState<PersonAccountLinkRow[]>([]);
   const [allInteractions, setAllInteractions] = useState<InteractionRow[]>([]);
 
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
@@ -651,6 +685,7 @@ export default function CommercialIntelligenceHubPage() {
           allPeopleData,
           legacyContactsData,
           legacyKingpinsData,
+          manualLinkData,
           allInteractionsData,
         ] = await Promise.all([
           supabase.from("accounts").select("*", { count: "exact", head: true }),
@@ -661,6 +696,11 @@ export default function CommercialIntelligenceHubPage() {
           fetchAllRows<PeopleRow>(supabase, "people", PEOPLE_SELECT),
           fetchAllRows<LegacyLinkRow>(supabase, "contacts", LEGACY_LINK_SELECT),
           fetchAllRows<LegacyLinkRow>(supabase, "kingpins", LEGACY_LINK_SELECT),
+          fetchAllRows<PersonAccountLinkRow>(
+            supabase,
+            "person_account_links",
+            PERSON_ACCOUNT_LINK_SELECT,
+          ),
           fetchAllRows<InteractionRow>(supabase, "interactions", INTERACTION_SELECT),
         ]);
 
@@ -675,6 +715,7 @@ export default function CommercialIntelligenceHubPage() {
         setAllPeople(allPeopleData.sort(sortPeople));
         setLegacyContacts(legacyContactsData);
         setLegacyKingpins(legacyKingpinsData);
+        setManualLinks(manualLinkData);
         setAllInteractions(allInteractionsData);
         setIsLoadingBaseData(false);
       } catch (error) {
@@ -766,15 +807,22 @@ export default function CommercialIntelligenceHubPage() {
           searchIncludes(buildPeopleSearchFields(person), q),
         );
 
+        const directlyLinkedAccountsFromPeople = allAccounts.filter((account) =>
+          matchedPeopleFromQuery.some((person) =>
+            hasManualAccountLink(account, person, manualLinks) ||
+            (person.account_id && person.account_id === account.id),
+          ),
+        );
+
         const directAccounts = ((directAccountResponse.data ?? []) as AccountRow[]) ?? [];
-        const directMap = new Map(directAccounts.map((account) => [account.id, account]));
 
         const peopleLinkedAccounts = allAccounts.filter((account) =>
-          matchedPeopleFromQuery.some((person) => isLinkedPerson(account, person)),
+          matchedPeopleFromQuery.some((person) => isLinkedPerson(account, person, manualLinks)),
         );
 
         const combinedMap = new Map<string, AccountRow>();
         directAccounts.forEach((account) => combinedMap.set(account.id, account));
+        directlyLinkedAccountsFromPeople.forEach((account) => combinedMap.set(account.id, account));
         peopleLinkedAccounts.forEach((account) => combinedMap.set(account.id, account));
 
         const filteredAccounts = Array.from(combinedMap.values()).sort(sortAccounts);
@@ -806,7 +854,7 @@ export default function CommercialIntelligenceHubPage() {
 
         const aggregatedLinkedPeople = dedupePeople(
           filteredAccounts.flatMap((account) =>
-            allPeople.filter((person) => isLinkedPerson(account, person)),
+            allPeople.filter((person) => isLinkedPerson(account, person, manualLinks)),
           ),
         ).sort(sortPeople);
 
@@ -861,6 +909,7 @@ export default function CommercialIntelligenceHubPage() {
     allPeople,
     allInteractions,
     legacyIdsByPeopleId,
+    manualLinks,
     selectedAccount?.id,
     isLoadingBaseData,
     supabase,
@@ -889,12 +938,12 @@ export default function CommercialIntelligenceHubPage() {
     accounts.forEach((account) => {
       map.set(
         account.id,
-        linkedPeople.filter((person) => isLinkedPerson(account, person)),
+        linkedPeople.filter((person) => isLinkedPerson(account, person, manualLinks)),
       );
     });
 
     return map;
-  }, [accounts, linkedPeople]);
+  }, [accounts, linkedPeople, manualLinks]);
 
   const interactionsByAccountId = useMemo(() => {
     const map = new Map<string, InteractionRow[]>();
@@ -1213,7 +1262,7 @@ export default function CommercialIntelligenceHubPage() {
 
         <SectionCard
           title="Commercial Search"
-          description="Search by account, retailer, city, state, supplier, category, or linked contact/kingpin name."
+          description="Search by account, retailer, city, state, supplier, category, or linked person name."
         >
           <Input
             label="Search Accounts"
@@ -1225,7 +1274,7 @@ export default function CommercialIntelligenceHubPage() {
           {isLoadingBaseData ? (
             <div className="mt-4">
               <StatusMessage
-                message="Loading account, people, legacy links, and interaction data..."
+                message="Loading account, people, manual links, legacy links, and interaction data..."
                 tone="info"
               />
             </div>
@@ -1712,7 +1761,7 @@ export default function CommercialIntelligenceHubPage() {
 
         <SectionCard
           title="Linked People"
-          description="People associated with the current matched account set, using the people table as the primary backbone."
+          description="People associated with the current matched account set. Manual account links are prioritized over direct account IDs and fuzzy matching."
         >
           {linkedPeople.length === 0 ? (
             <StatusMessage
@@ -1788,9 +1837,9 @@ export default function CommercialIntelligenceHubPage() {
           description="Working space for what this account means commercially and what should happen next."
         >
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-700 dark:bg-slate-800">
-            This page now uses the people table as the primary backbone for linked-person logic.
-            Legacy contacts and kingpins are still consulted behind the scenes only to bridge older
-            interaction history until that relationship model is fully modernized.
+            This page now prioritizes manual person-account links, then direct account_id links,
+            then fuzzy company matching. This creates a durable override layer for accounts like
+            Hull Cooperative where person/company naming does not always align cleanly.
           </div>
         </SectionCard>
       </div>
