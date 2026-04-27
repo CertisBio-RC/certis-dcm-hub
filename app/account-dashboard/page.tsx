@@ -111,6 +111,7 @@ type AccountEditForm = {
 
 type SummaryCounts = {
   totalAccounts: number;
+  totalAgronomyAccounts: number;
   totalContacts: number;
   totalKingpins: number;
   totalInteractions: number;
@@ -332,7 +333,11 @@ function isHeadquartersAccount(account: AccountRow): boolean {
 
 function isAgronomyAccount(account: AccountRow): boolean {
   const category = normalizeForMatch(account.category);
-  if (isHeadquartersAccount(account)) return true;
+
+  if (category.includes("corporate") || category.includes("regional")) {
+    return true;
+  }
+
   return category.includes("agronomy");
 }
 
@@ -533,6 +538,17 @@ function escapeLikeValue(value: string): string {
   return value.replace(/[%_,]/g, " ").trim();
 }
 
+function KpiCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="flex min-h-[7.25rem] flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+      <div className="min-h-[2.25rem] text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        {label}
+      </div>
+      <div className="mt-2 text-4xl font-bold leading-none">{value}</div>
+    </div>
+  );
+}
+
 async function fetchAllRows<T>(
   supabase: ReturnType<typeof createClient>,
   table: string,
@@ -617,6 +633,7 @@ export default function CommercialIntelligenceHubPage() {
   const [query, setQuery] = useState("");
   const [summaryCounts, setSummaryCounts] = useState<SummaryCounts>({
     totalAccounts: 0,
+    totalAgronomyAccounts: 0,
     totalContacts: 0,
     totalKingpins: 0,
     totalInteractions: 0,
@@ -680,6 +697,9 @@ export default function CommercialIntelligenceHubPage() {
 
         setSummaryCounts({
           totalAccounts: accountsCountResponse.count ?? 0,
+          totalAgronomyAccounts: allAccountsData.filter((account) =>
+            isAgronomyAccount(account),
+          ).length,
           totalContacts: contactsCountResponse.count ?? 0,
           totalKingpins: kingpinsCountResponse.count ?? 0,
           totalInteractions: interactionsCountResponse.count ?? 0,
@@ -1204,34 +1224,12 @@ export default function CommercialIntelligenceHubPage() {
           title="General Account Summary"
           description="High-level snapshot of the full CERTIS DCM database."
         >
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Total Accounts
-              </div>
-              <div className="mt-1 text-4xl font-bold">{summaryCounts.totalAccounts}</div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Total Contacts
-              </div>
-              <div className="mt-1 text-4xl font-bold">{summaryCounts.totalContacts}</div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Total Kingpins
-              </div>
-              <div className="mt-1 text-4xl font-bold">{summaryCounts.totalKingpins}</div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Total Interactions
-              </div>
-              <div className="mt-1 text-4xl font-bold">{summaryCounts.totalInteractions}</div>
-            </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <KpiCard label="Total Accounts" value={summaryCounts.totalAccounts} />
+            <KpiCard label="Total Agronomy Accounts" value={summaryCounts.totalAgronomyAccounts} />
+            <KpiCard label="Total Contacts" value={summaryCounts.totalContacts} />
+            <KpiCard label="Total Kingpins" value={summaryCounts.totalKingpins} />
+            <KpiCard label="Total Interactions" value={summaryCounts.totalInteractions} />
           </div>
         </SectionCard>
 
@@ -1369,77 +1367,19 @@ export default function CommercialIntelligenceHubPage() {
           description="Coverage, activity, and stage progression across the matched account set."
         >
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Total Locations
-              </div>
-              <div className="mt-1 text-4xl font-bold">{totalLocations}</div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Total Agronomy Locations
-              </div>
-              <div className="mt-1 text-4xl font-bold">{totalAgronomyLocations}</div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Agronomy Coverage
-              </div>
-              <div className="mt-1 text-4xl font-bold">{agronomyCoveragePercent}%</div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Locations Contacted
-              </div>
-              <div className="mt-1 text-4xl font-bold">{locationsContacted}</div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Active Locations (90d)
-              </div>
-              <div className="mt-1 text-4xl font-bold">{activeLocationsLast90}</div>
-            </div>
+            <KpiCard label="Total Locations" value={totalLocations} />
+            <KpiCard label="Total Agronomy Locations" value={totalAgronomyLocations} />
+            <KpiCard label="Agronomy Coverage" value={`${agronomyCoveragePercent}%`} />
+            <KpiCard label="Locations Contacted" value={locationsContacted} />
+            <KpiCard label="Active Locations (90d)" value={activeLocationsLast90} />
           </div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Total Interactions
-              </div>
-              <div className="mt-1 text-4xl font-bold">{totalInteractionsForAccountSet}</div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Intro Locations
-              </div>
-              <div className="mt-1 text-4xl font-bold">{introStageLocations}</div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Technical Training
-              </div>
-              <div className="mt-1 text-4xl font-bold">{technicalTrainingLocations}</div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Field Evaluation
-              </div>
-              <div className="mt-1 text-4xl font-bold">{fieldEvaluationLocations}</div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Adoption
-              </div>
-              <div className="mt-1 text-4xl font-bold">{adoptionLocations}</div>
-            </div>
+            <KpiCard label="Total Interactions" value={totalInteractionsForAccountSet} />
+            <KpiCard label="Intro Locations" value={introStageLocations} />
+            <KpiCard label="Technical Training" value={technicalTrainingLocations} />
+            <KpiCard label="Field Evaluation" value={fieldEvaluationLocations} />
+            <KpiCard label="Adoption" value={adoptionLocations} />
           </div>
         </SectionCard>
 
@@ -1669,25 +1609,10 @@ export default function CommercialIntelligenceHubPage() {
             description="Quick count of linked records across all currently matched locations."
           >
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Contacts
-                </div>
-                <div className="mt-1 text-4xl font-bold">{contactCount}</div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Kingpins
-                </div>
-                <div className="mt-1 text-4xl font-bold">{kingpinCount}</div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800 sm:col-span-2">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Other / Unassigned
-                </div>
-                <div className="mt-1 text-4xl font-bold">{otherCount}</div>
+              <KpiCard label="Contacts" value={contactCount} />
+              <KpiCard label="Kingpins" value={kingpinCount} />
+              <div className="sm:col-span-2">
+                <KpiCard label="Other / Unassigned" value={otherCount} />
               </div>
             </div>
           </SectionCard>
@@ -1697,39 +1622,29 @@ export default function CommercialIntelligenceHubPage() {
             description="Read-only snapshot of interaction activity across all currently matched locations."
           >
             <div className="grid gap-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Logged Interactions
-                </div>
-                <div className="mt-1 text-4xl font-bold">{linkedInteractions.length}</div>
-              </div>
+              <KpiCard label="Logged Interactions" value={linkedInteractions.length} />
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <div className="flex min-h-[7.25rem] flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="min-h-[2.25rem] text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Most Recent Interaction Date
                 </div>
-                <div className="mt-1 font-semibold">
+                <div className="mt-2 font-semibold">
                   {mostRecentInteraction?.date ||
                     mostRecentInteraction?.created_at ||
                     "No activity recorded"}
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <div className="flex min-h-[7.25rem] flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="min-h-[2.25rem] text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Most Recent Interaction Type
                 </div>
-                <div className="mt-1 font-semibold">
+                <div className="mt-2 font-semibold">
                   {mostRecentInteraction?.type || "No activity recorded"}
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Linked People
-                </div>
-                <div className="mt-1 font-semibold">{linkedPeople.length}</div>
-              </div>
+              <KpiCard label="Linked People" value={linkedPeople.length} />
             </div>
           </SectionCard>
         </div>
