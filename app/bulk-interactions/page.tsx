@@ -109,6 +109,12 @@ type ImportResult = {
   failed: number;
 };
 
+type DuplicateImportKeyCheck = {
+  duplicateKeys: Set<string>;
+  isReady: boolean;
+  errorMessage: string | null;
+};
+
 type AppField =
   | "interaction_date"
   | "person_name"
@@ -1296,11 +1302,11 @@ function FieldGroupSection({
 
 function SummaryStatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="min-h-[124px] rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-      <div className="min-h-[40px] text-sm font-bold leading-snug text-slate-600 dark:text-slate-300">
+    <div className="min-h-[104px] rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+      <div className="text-sm font-bold leading-snug text-slate-600 dark:text-slate-300">
         {label}
       </div>
-      <div className="mt-4 text-3xl font-bold leading-none">{value}</div>
+      <div className="mt-3 text-3xl font-bold leading-none">{value}</div>
     </div>
   );
 }
@@ -1614,6 +1620,7 @@ export default function BulkInteractionsPage() {
   } | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importFailures, setImportFailures] = useState<ImportFailure[]>([]);
+  const [isImportKeyReady, setIsImportKeyReady] = useState(true);
 
   const readyRows = previewRows.filter((row) => row.preview_lane === "ready");
   const needsCompletionRows = previewRows.filter(
@@ -1637,6 +1644,7 @@ export default function BulkInteractionsPage() {
     setPreviewRows([]);
     setImportResult(null);
     setImportFailures([]);
+    setIsImportKeyReady(true);
     setMessage({
       tone: "info",
       text: `Loaded file: ${file.name}. Click Detect Headers to build the mapping table.`,
@@ -1648,6 +1656,7 @@ export default function BulkInteractionsPage() {
     setImportResult(null);
     setPreviewRows([]);
     setImportFailures([]);
+    setIsImportKeyReady(true);
 
     try {
       const parsedRows = parseDelimitedText(csvText);
@@ -1720,9 +1729,18 @@ export default function BulkInteractionsPage() {
     });
   };
 
-  const fetchDuplicateImportKeys = async (keys: string[]): Promise<Set<string>> => {
+  const fetchDuplicateImportKeys = async (
+    keys: string[],
+  ): Promise<DuplicateImportKeyCheck> => {
     const usableKeys = Array.from(new Set(keys.filter(Boolean)));
-    if (usableKeys.length === 0) return new Set<string>();
+
+    if (usableKeys.length === 0) {
+      return {
+        duplicateKeys: new Set<string>(),
+        isReady: true,
+        errorMessage: null,
+      };
+    }
 
     const { data, error } = await supabase
       .from("interactions")
@@ -1730,12 +1748,19 @@ export default function BulkInteractionsPage() {
       .in("import_key", usableKeys);
 
     if (error) {
-      throw new Error(
-        `${error.message}. Confirm the import_key SQL migration has been run before previewing/importing.`,
-      );
+      return {
+        duplicateKeys: new Set<string>(),
+        isReady: false,
+        errorMessage:
+          `${error.message}. Run the import_key SQL migration before importing. Preview can continue, but import is blocked until this is fixed.`,
+      };
     }
 
-    return new Set((data ?? []).map((row) => normalizeValue(row.import_key)));
+    return {
+      duplicateKeys: new Set((data ?? []).map((row) => normalizeValue(row.import_key))),
+      isReady: true,
+      errorMessage: null,
+    };
   };
 
   const handlePreviewImport = async () => {
@@ -1835,19 +1860,40 @@ export default function BulkInteractionsPage() {
         };
       });
 
-      const duplicateKeys = await fetchDuplicateImportKeys(
+      const duplicateCheck = await fetchDuplicateImportKeys(
         builtPreviewRows.map((row) => row.import_key),
       );
 
+      setIsImportKeyReady(duplicateCheck.isReady);
+
       const rowsWithDuplicateStatus: PreviewRow[] = builtPreviewRows.map((row): PreviewRow => ({
         ...row,
-        duplicate_status: duplicateKeys.has(row.import_key) ? "duplicate" : "new",
+        duplicate_status: duplicateCheck.isReady
+          ? duplicateCheck.duplicateKeys.has(row.import_key)
+            ? "duplicate"
+            : "new"
+          : "unchecked",
       }));
+
+      const readyCount = rowsWithDuplicateStatus.filter(
+        (row) => row.preview_lane === "ready",
+      ).length;
+      const needsCompletionCount = rowsWithDuplicateStatus.filter(
+        (row) => row.preview_lane === "needs_completion",
+      ).length;
+      const failedCount = rowsWithDuplicateStatus.filter(
+        (row) => row.preview_lane === "failed",
+      ).length;
+      const duplicateRowCount = rowsWithDuplicateStatus.filter(
+        (row) => row.duplicate_status === "duplicate",
+      ).length;
 
       setPreviewRows(rowsWithDuplicateStatus);
       setMessage({
-        tone: "success",
-        text: `Preview ready. ${rowsWithDuplicateStatus.length} row(s) parsed. Ready: ${rowsWithDuplicateStatus.filter((row) => row.preview_lane === "ready").length}. Needs Completion: ${rowsWithDuplicateStatus.filter((row) => row.preview_lane === "needs_completion").length}. Failed / Source Fix: ${rowsWithDuplicateStatus.filter((row) => row.preview_lane === "failed").length}. Duplicates already in Supabase: ${rowsWithDuplicateStatus.filter((row) => row.duplicate_status === "duplicate").length}.`,
+        tone: duplicateCheck.isReady ? "success" : "info",
+        text: duplicateCheck.isReady
+          ? `Preview ready. ${rowsWithDuplicateStatus.length} row(s) parsed. Ready: ${readyCount}. Needs Completion: ${needsCompletionCount}. Failed / Source Fix: ${failedCount}. Duplicates already in Supabase: ${duplicateRowCount}.`
+          : `Preview ready. ${rowsWithDuplicateStatus.length} row(s) parsed. Ready: ${readyCount}. Needs Completion: ${needsCompletionCount}. Failed / Source Fix: ${failedCount}. Duplicate checking is paused because import_key is not available yet. ${duplicateCheck.errorMessage}`,
       });
     } catch (error) {
       const errorText = error instanceof Error ? error.message : "Unknown preview error.";
@@ -2017,6 +2063,14 @@ export default function BulkInteractionsPage() {
       return;
     }
 
+    if (!isImportKeyReady) {
+      setMessage({
+        tone: "error",
+        text: "Import is blocked until the import_key SQL migration is run in Supabase. Preview is available, but duplicate-safe import requires the import_key column and unique index.",
+      });
+      return;
+    }
+
     setIsImporting(true);
     setMessage(null);
     setImportResult(null);
@@ -2030,7 +2084,23 @@ export default function BulkInteractionsPage() {
     const failures: ImportFailure[] = [];
 
     try {
-      const duplicateKeys = await fetchDuplicateImportKeys(importableRows.map((row) => row.import_key));
+      const duplicateCheck = await fetchDuplicateImportKeys(
+        importableRows.map((row) => row.import_key),
+      );
+
+      if (!duplicateCheck.isReady) {
+        setIsImportKeyReady(false);
+        setMessage({
+          tone: "error",
+          text:
+            duplicateCheck.errorMessage ||
+            "Import is blocked until the import_key SQL migration is run in Supabase.",
+        });
+        setIsImporting(false);
+        return;
+      }
+
+      const duplicateKeys = duplicateCheck.duplicateKeys;
 
       for (const row of importableRows) {
         try {
@@ -2272,6 +2342,7 @@ export default function BulkInteractionsPage() {
                   setPreviewRows([]);
                   setImportResult(null);
                   setImportFailures([]);
+                  setIsImportKeyReady(true);
                   setMessage(null);
                 }}
               >
@@ -2396,7 +2467,7 @@ export default function BulkInteractionsPage() {
             title="3-Lane Preview Summary"
             description="Rows are sorted into Ready to Import, Needs Completion, and Failed / Source Fix before anything is written to Supabase."
           >
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <SummaryStatCard label="Parsed Rows" value={previewRows.length} />
               <SummaryStatCard label="Ready" value={readyRows.length} />
               <SummaryStatCard label="Needs Completion" value={needsCompletionRows.length} />
@@ -2404,6 +2475,15 @@ export default function BulkInteractionsPage() {
               <SummaryStatCard label="Matched" value={matchedCount} />
               <SummaryStatCard label="Create Person" value={createCount} />
             </div>
+            {!isImportKeyReady ? (
+              <div className="mt-4">
+                <StatusMessage
+                  tone="error"
+                  message="The import_key SQL migration has not been detected. Preview can continue, but duplicate-safe import is blocked until the column and unique index are created in Supabase."
+                />
+              </div>
+            ) : null}
+
             {duplicateCount > 0 ? (
               <div className="mt-4">
                 <StatusMessage
