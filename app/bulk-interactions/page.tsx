@@ -534,6 +534,77 @@ function isWeakOrJunkName(value: string | null | undefined): boolean {
   return false;
 }
 
+function extractFirstEmailAddress(value: string | null | undefined): string {
+  const raw = normalizeValue(value);
+  if (!raw) return "";
+
+  const angleMatch = raw.match(/<([^<>\s]+@[^<>\s]+\.[^<>\s]+)>/);
+  if (angleMatch?.[1] && isValidEmail(angleMatch[1])) {
+    return normalizeEmail(angleMatch[1]);
+  }
+
+  const emailMatch = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  if (emailMatch?.[0] && isValidEmail(emailMatch[0])) {
+    return normalizeEmail(emailMatch[0]);
+  }
+
+  return "";
+}
+
+function cleanPersonNameFromSource(value: string | null | undefined): string {
+  const raw = normalizeValue(value);
+  if (!raw) return "";
+
+  const withoutAngleEmail = raw
+    .replace(/<[^<>\s]+@[^<>\s]+\.[^<>\s]+>/g, "")
+    .replace(/["']/g, "")
+    .trim();
+
+  if (!withoutAngleEmail) return "";
+
+  if (isValidEmail(withoutAngleEmail) || withoutAngleEmail.includes("@")) {
+    return "";
+  }
+
+  return withoutAngleEmail;
+}
+
+function coerceRawIdentityFields(row: RawImportRow): RawImportRow {
+  const sourcePersonName = normalizeValue(row.person_name);
+  const sourceEmail = normalizeValue(row.email);
+  const emailFromName = extractFirstEmailAddress(sourcePersonName);
+  const cleanName = cleanPersonNameFromSource(sourcePersonName);
+
+  return {
+    ...row,
+    person_name: cleanName || sourcePersonName,
+    email: isValidEmail(sourceEmail) ? normalizeEmail(sourceEmail) : emailFromName || sourceEmail,
+  };
+}
+
+function applyMatchedPersonDisplay(
+  row: RawImportRow,
+  matchedCandidate: MatchCandidate | null,
+): RawImportRow {
+  if (!matchedCandidate) return row;
+
+  return {
+    ...row,
+    person_name:
+      isWeakOrJunkName(row.person_name) && matchedCandidate.person_name
+        ? matchedCandidate.person_name
+        : row.person_name,
+    company_name:
+      !normalizeValue(row.company_name) && matchedCandidate.company_name
+        ? matchedCandidate.company_name
+        : row.company_name,
+    email:
+      !isValidEmail(row.email) && matchedCandidate.email
+        ? normalizeEmail(matchedCandidate.email)
+        : row.email,
+  };
+}
+
 function normalizeDateForImport(value: string): string | null {
   const raw = normalizeValue(value);
   if (!raw) return null;
@@ -862,7 +933,7 @@ function buildRawRowsFromMappedInput(
       return values[0] ?? "";
     };
 
-    return {
+    return coerceRawIdentityFields({
       interaction_date: readMappedField("interaction_date"),
       person_name: readMappedField("person_name"),
       email: readMappedField("email"),
@@ -879,7 +950,7 @@ function buildRawRowsFromMappedInput(
       cell_phone: readMappedField("cell_phone"),
       title: readMappedField("title"),
       state: readMappedField("state"),
-    };
+    });
   });
 }
 
@@ -1837,12 +1908,13 @@ export default function BulkInteractionsPage() {
 
         const classification = classifyRow(row, possibleCandidates);
         const matchedCandidate = classification.matchedCandidate;
+        const displayRow = applyMatchedPersonDisplay(row, matchedCandidate);
         const normalizedInteractionType =
-          normalizeInteractionType(row.interaction_type) || inferInteractionType(row);
-        const importKey = buildImportKey(row);
+          normalizeInteractionType(displayRow.interaction_type) || inferInteractionType(displayRow);
+        const importKey = buildImportKey(displayRow);
 
         return {
-          ...row,
+          ...displayRow,
           row_number: index + 2,
           person_action: classification.action,
           preview_lane: classification.lane,
@@ -1850,7 +1922,7 @@ export default function BulkInteractionsPage() {
           matched_person_label: matchedCandidate?.label ?? null,
           selected_possible_candidate_id: possibleCandidates[0]?.id ?? null,
           normalized_interaction_type: normalizedInteractionType,
-          prepared_details: buildPreparedDetails(row),
+          prepared_details: buildPreparedDetails(displayRow),
           import_key: importKey,
           error_message: classification.errorMessage,
           completion_notes: classification.completionNotes,
@@ -2436,7 +2508,7 @@ export default function BulkInteractionsPage() {
                 ) : (
                   <StatusMessage
                     tone="success"
-                    message="Required mapping is complete. You can preview the import."
+                    message="Required mapping is complete. You can preview the import. Email-style names will be cleaned automatically when a matching existing person is found."
                   />
                 )}
               </SectionCard>
@@ -2508,7 +2580,7 @@ export default function BulkInteractionsPage() {
             <div className="grid gap-6">
               <PreviewLaneCard
                 title={`Ready to Import (${readyRows.length})`}
-                description="These rows meet Option A validation, but you can still review and edit person name, company name, email, or purpose before import. Duplicate import_keys will be skipped during import."
+                description="These rows passed validation and are linked to an existing person or safe new-person record. Existing-person matches do not need manual name cleanup unless the selected match is wrong."
                 rows={readyRows}
                 emptyMessage="No ready rows yet."
                 editable
