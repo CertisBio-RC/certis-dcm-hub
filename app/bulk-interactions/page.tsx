@@ -2508,10 +2508,10 @@ export default function BulkInteractionsPage() {
             <div className="grid gap-6">
               <PreviewLaneCard
                 title={`Ready to Import (${readyRows.length})`}
-                description="These rows meet Option A validation and will not create weak email-only people. Duplicate import_keys will be skipped during import."
+                description="These rows meet Option A validation, but you can still review and edit person name, company name, email, or purpose before import. Duplicate import_keys will be skipped during import."
                 rows={readyRows}
                 emptyMessage="No ready rows yet."
-                editable={false}
+                editable
                 onFieldChange={handlePreviewFieldChange}
                 onActionChange={handlePreviewRowAction}
                 onCandidateChange={handleCandidateSelectionChange}
