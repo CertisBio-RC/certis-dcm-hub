@@ -55,6 +55,7 @@ type MatchCandidate = {
   email: string | null;
   company_name: string | null;
   person_name: string | null;
+  person_name_is_junk: boolean;
   match_reason: string;
   score: number;
   state: string | null;
@@ -83,6 +84,8 @@ type PreviewRow = RawImportRow & {
   completion_notes: string[];
   possible_candidates: MatchCandidate[];
   can_create_person: boolean;
+  requires_person_name_fix: boolean;
+  matched_person_original_name: string | null;
   duplicate_status: "unchecked" | "duplicate" | "new";
 };
 
@@ -94,6 +97,7 @@ type ImportFailure = {
   stage:
     | "person_lookup"
     | "person_create"
+    | "person_update"
     | "interaction_insert"
     | "validation"
     | "duplicate";
@@ -1116,6 +1120,7 @@ function scoreCandidateForRow(
     email: candidate.email,
     company_name: candidate.company_name,
     person_name: personName || null,
+    person_name_is_junk: isWeakOrJunkName(personName),
     match_reason: matchReason,
     score,
     state: candidate.state,
@@ -1148,6 +1153,8 @@ function classifyRow(row: RawImportRow, candidates: MatchCandidate[]): {
   errorMessage: string | null;
   completionNotes: string[];
   canCreatePerson: boolean;
+  requiresPersonNameFix: boolean;
+  matchedPersonOriginalName: string | null;
 } {
   const sorted = [...candidates].sort((a, b) => b.score - a.score);
   const top = sorted[0] ?? null;
@@ -1173,38 +1180,73 @@ function classifyRow(row: RawImportRow, candidates: MatchCandidate[]): {
 
   const canCreatePerson = hasUsableName;
 
+  const buildClassification = (input: {
+    action: PersonAction;
+    lane: PreviewLane;
+    matchedCandidate: MatchCandidate | null;
+    errorMessage: string | null;
+    completionNotes: string[];
+    canCreatePerson: boolean;
+    requiresPersonNameFix?: boolean;
+    matchedPersonOriginalName?: string | null;
+  }) => ({
+    ...input,
+    requiresPersonNameFix: input.requiresPersonNameFix ?? false,
+    matchedPersonOriginalName: input.matchedPersonOriginalName ?? null,
+  });
+
   if (!hasPurpose || (!hasEmail && !hasUsableName) || (hasAnyEmailText && !hasEmail)) {
     const severeFailure = !hasPurpose && !hasEmail && !hasUsableName;
-    return {
+    return buildClassification({
       action: "skip",
       lane: severeFailure ? "failed" : "needs_completion",
       matchedCandidate: null,
       errorMessage: completionNotes.join(" "),
       completionNotes,
       canCreatePerson,
-    };
+    });
   }
 
   if (!top) {
     if (!canCreatePerson) {
-      return {
+      return buildClassification({
         action: "skip",
         lane: "needs_completion",
         matchedCandidate: null,
         errorMessage: completionNotes.join(" ") || "Add a real person name before import.",
         completionNotes,
         canCreatePerson,
-      };
+      });
     }
 
-    return {
+    return buildClassification({
       action: "create",
       lane: "ready",
       matchedCandidate: null,
       errorMessage: null,
       completionNotes,
       canCreatePerson,
-    };
+    });
+  }
+
+  const matchedPersonNameNeedsFix =
+    top.person_name_is_junk && hasUsableName && normalizeForMatch(row.person_name) !== normalizeForMatch(top.person_name);
+
+  if (matchedPersonNameNeedsFix) {
+    completionNotes.push(
+      "Matched existing person has an email-style or weak name. Correct Person Name here and import will update the existing person record before saving the interaction.",
+    );
+
+    return buildClassification({
+      action: "matched",
+      lane: "needs_completion",
+      matchedCandidate: top,
+      errorMessage: "Existing person name needs cleanup before import.",
+      completionNotes,
+      canCreatePerson,
+      requiresPersonNameFix: true,
+      matchedPersonOriginalName: top.person_name,
+    });
   }
 
   const strongExactEmail = top.match_reason.includes("email exact");
@@ -1216,48 +1258,48 @@ function classifyRow(row: RawImportRow, candidates: MatchCandidate[]): {
   const strongNonEmailScore = top.score >= 85 && strongNameAndCompany && clearlyAhead;
 
   if (strongExactEmail || veryStrongScore || strongNonEmailScore) {
-    return {
+    return buildClassification({
       action: "matched",
       lane: "ready",
       matchedCandidate: top,
       errorMessage: null,
       completionNotes,
       canCreatePerson,
-    };
+    });
   }
 
   if (top.score >= 35) {
     completionNotes.push("Possible existing person found. Choose Use Existing Person or Create Person.");
-    return {
+    return buildClassification({
       action: "possible",
       lane: "needs_completion",
       matchedCandidate: null,
       errorMessage: "Possible existing person found. Review before importing.",
       completionNotes,
       canCreatePerson,
-    };
+    });
   }
 
   if (!canCreatePerson) {
     completionNotes.push("A new person cannot be created from an email-only or weak-name row.");
-    return {
+    return buildClassification({
       action: "skip",
       lane: "needs_completion",
       matchedCandidate: null,
       errorMessage: completionNotes.join(" "),
       completionNotes,
       canCreatePerson,
-    };
+    });
   }
 
-  return {
+  return buildClassification({
     action: "create",
     lane: "ready",
     matchedCandidate: null,
     errorMessage: null,
     completionNotes,
     canCreatePerson,
-  };
+  });
 }
 
 function rebuildPreviewRow(row: PreviewRow): PreviewRow {
@@ -1298,6 +1340,8 @@ function rebuildPreviewRow(row: PreviewRow): PreviewRow {
         ? []
         : classification.completionNotes,
     can_create_person: classification.canCreatePerson,
+    requires_person_name_fix: classification.requiresPersonNameFix,
+    matched_person_original_name: classification.matchedPersonOriginalName,
     duplicate_status: "unchecked",
   };
 }
@@ -1524,7 +1568,11 @@ function PreviewLaneCard({
                       onChange={(event) =>
                         onFieldChange(row.row_number, "person_name", event.target.value)
                       }
-                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:disabled:bg-slate-800"
+                      className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm font-medium outline-none transition disabled:bg-slate-100 dark:disabled:bg-slate-800 ${
+                        row.requires_person_name_fix
+                          ? "border-amber-400 bg-amber-50 text-slate-900 focus:border-amber-500 dark:border-amber-500 dark:bg-amber-950/20 dark:text-slate-100"
+                          : "border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                      }`}
                     />
                   </label>
 
@@ -1570,6 +1618,19 @@ function PreviewLaneCard({
                     />
                   </label>
                 </div>
+
+                {row.requires_person_name_fix ? (
+                  <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                    <div className="font-bold">Existing person name cleanup required</div>
+                    <div className="mt-1">
+                      The matched person record currently has an email-style or weak name
+                      {row.matched_person_original_name
+                        ? ` (${row.matched_person_original_name})`
+                        : ""}.
+                      Enter the correct Person Name above. Import will update the existing person record before saving this interaction.
+                    </div>
+                  </div>
+                ) : null}
 
                 {row.possible_candidates.length > 0 ? (
                   <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
@@ -1928,6 +1989,8 @@ export default function BulkInteractionsPage() {
           completion_notes: classification.completionNotes,
           possible_candidates: possibleCandidates.slice(0, 6),
           can_create_person: classification.canCreatePerson,
+          requires_person_name_fix: classification.requiresPersonNameFix,
+          matched_person_original_name: classification.matchedPersonOriginalName,
           duplicate_status: "unchecked",
         };
       });
@@ -2083,7 +2146,10 @@ export default function BulkInteractionsPage() {
           return {
             ...updated,
             person_action: "matched",
-            preview_lane: updated.completion_notes.length > 0 ? "needs_completion" : "ready",
+            preview_lane:
+              updated.requires_person_name_fix || updated.completion_notes.length > 0
+                ? "needs_completion"
+                : "ready",
             matched_person_id: selectedCandidate.id,
             matched_person_label: selectedCandidate.label,
           };
@@ -2124,7 +2190,13 @@ export default function BulkInteractionsPage() {
       const hasPurpose = Boolean(normalizeValue(row.purpose));
       const hasIdentity = Boolean(isValidEmail(row.email) || !isWeakOrJunkName(row.person_name));
       const statusAllowsImport = row.person_action === "matched" || row.person_action === "create";
-      return row.preview_lane === "ready" && statusAllowsImport && hasPurpose && hasIdentity;
+      return (
+        row.preview_lane === "ready" &&
+        statusAllowsImport &&
+        hasPurpose &&
+        hasIdentity &&
+        (!row.requires_person_name_fix || !isWeakOrJunkName(row.person_name))
+      );
     });
 
     if (importableRows.length === 0) {
@@ -2290,6 +2362,35 @@ export default function BulkInteractionsPage() {
               message: "No person_id was resolved for this row.",
             });
             continue;
+          }
+
+          if (
+            row.person_action === "matched" &&
+            row.requires_person_name_fix &&
+            personId &&
+            !isWeakOrJunkName(row.person_name)
+          ) {
+            const { error: personUpdateError } = await supabase
+              .from("people")
+              .update({
+                full_name: normalizeValue(row.person_name),
+                company_name: normalizeValue(row.company_name) || null,
+                email: isValidEmail(row.email) ? normalizeEmail(row.email) : null,
+              })
+              .eq("id", personId);
+
+            if (personUpdateError) {
+              failed += 1;
+              failures.push({
+                row_number: row.row_number,
+                person_name: normalizeValue(row.person_name),
+                company_name: normalizeValue(row.company_name),
+                interaction_type: row.normalized_interaction_type,
+                stage: "person_update",
+                message: personUpdateError.message,
+              });
+              continue;
+            }
           }
 
           const interactionPayload = {
