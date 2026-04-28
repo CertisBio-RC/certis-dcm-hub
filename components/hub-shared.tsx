@@ -490,20 +490,28 @@ function SignInPanel({
     return true;
   };
 
-  const handleSignIn = async () => {
-    const email = signInEmail.trim().toLowerCase();
+const handleSignIn = async () => {
+  const email = signInEmail.trim().toLowerCase();
 
-    if (!email || !password.trim()) {
-      setMessage({
-        tone: "error",
-        text: "Please enter both email and password.",
-      });
-      return;
-    }
+  if (!email || !password.trim()) {
+    setMessage({
+      tone: "error",
+      text: "Please enter both email and password.",
+    });
+    return;
+  }
 
-    setIsSubmitting(true);
-    setMessage(null);
+  // 🔒 Enforce CERTIS domain on sign-in
+  if (!email.endsWith("@certisbio.com")) {
+    setMessage({
+      tone: "error",
+      text: "Please use your @certisbio.com email address.",
+    });
+    return;
+  }
 
+  setIsSubmitting(true);
+  setMessage(null);  
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
