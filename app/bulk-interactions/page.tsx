@@ -1839,7 +1839,7 @@ export default function BulkInteractionsPage() {
         builtPreviewRows.map((row) => row.import_key),
       );
 
-      const rowsWithDuplicateStatus = builtPreviewRows.map((row) => ({
+      const rowsWithDuplicateStatus: PreviewRow[] = builtPreviewRows.map((row): PreviewRow => ({
         ...row,
         duplicate_status: duplicateKeys.has(row.import_key) ? "duplicate" : "new",
       }));
