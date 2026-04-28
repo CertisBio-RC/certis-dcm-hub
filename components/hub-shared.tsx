@@ -459,35 +459,11 @@ function SignInPanel({
 
   const [signInEmail, setSignInEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [accessEmail, setAccessEmail] = useState("");
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<{
     tone: "success" | "error" | "info";
     text: string;
   } | null>(null);
-
-  const validateCertisEmail = (email: string) => {
-    const normalized = email.trim().toLowerCase();
-
-    if (!normalized) {
-      setMessage({
-        tone: "error",
-        text: "Please enter your CERTIS email address.",
-      });
-      return false;
-    }
-
-    if (!normalized.endsWith("@certisbio.com")) {
-      setMessage({
-        tone: "error",
-        text: "Access is limited to @certisbio.com email addresses.",
-      });
-      return false;
-    }
-
-    return true;
-  };
 
   const handleSignIn = async () => {
     const email = signInEmail.trim().toLowerCase();
@@ -524,42 +500,6 @@ function SignInPanel({
 
     setPassword("");
     await onSignedIn();
-    setIsSubmitting(false);
-  };
-
-  const handleGetAccess = async () => {
-    if (!validateCertisEmail(accessEmail)) return;
-
-    const email = accessEmail.trim().toLowerCase();
-
-    setIsSubmitting(true);
-    setMessage(null);
-
-    const redirectTo =
-      typeof window !== "undefined" ? window.location.origin : undefined;
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: redirectTo,
-      },
-    });
-
-    if (error) {
-      setMessage({
-        tone: "error",
-        text: `Could not send access email. ${error.message}`,
-      });
-      setIsSubmitting(false);
-      return;
-    }
-
-    setMessage({
-      tone: "success",
-      text: "Check your email for your access link.",
-    });
-
-    setAccessEmail("");
     setIsSubmitting(false);
   };
 
@@ -605,32 +545,8 @@ function SignInPanel({
           </div>
         </div>
 
-        <div className="my-6 text-center text-sm text-slate-500 dark:text-slate-400">
-          — or —
-        </div>
-
-        <div>
-          <div className="mb-2 text-sm font-semibold">Get CERTIS Access</div>
-
-          <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
-            Use your @certisbio.com email to receive an access link.
-          </p>
-
-          <div className="grid gap-4">
-            <Input
-              label="CERTIS Email"
-              value={accessEmail}
-              onChange={setAccessEmail}
-              type="email"
-              placeholder="name@certisbio.com"
-            />
-          </div>
-
-          <div className="mt-4">
-            <PrimaryButton onClick={handleGetAccess} disabled={isSubmitting}>
-              {isSubmitting ? "Working..." : "Send Access Link"}
-            </PrimaryButton>
-          </div>
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+          Access is restricted to approved CERTIS users with a password. Contact the Hub administrator if you need an account or password reset.
         </div>
 
         {message ? (
