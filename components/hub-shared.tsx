@@ -121,22 +121,12 @@ type HubUserContextValue = {
   toggleTheme: () => void;
 };
 
-const HubUserContext = createContext<HubUserContextValue | undefined>(
-  undefined,
-);
+const HubUserContext = createContext<HubUserContextValue | undefined>(undefined);
 
 const INTERACTION_STAGE_OPTIONS = [
   { label: "Intro/Touch Base", value: "Introduction", color: "bg-red-600" },
-  {
-    label: "Technical Training",
-    value: "Technical Training",
-    color: "bg-blue-600",
-  },
-  {
-    label: "Field Evaluation",
-    value: "Field Evaluation",
-    color: "bg-yellow-500 text-black",
-  },
+  { label: "Technical Training", value: "Technical Training", color: "bg-blue-600" },
+  { label: "Field Evaluation", value: "Field Evaluation", color: "bg-yellow-500 text-black" },
   { label: "Adoption", value: "Adoption", color: "bg-green-600" },
 ] as const;
 
@@ -154,9 +144,7 @@ export function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-export function normalizeDisplayValue(
-  value: string | null | undefined,
-): string {
+export function normalizeDisplayValue(value: string | null | undefined): string {
   return (value ?? "").trim();
 }
 
@@ -172,9 +160,7 @@ export function cleanPhoneForTel(value: string | null | undefined): string {
   return cleaned.replace(/\D/g, "");
 }
 
-export function formatInteractionType(
-  value: string | null | undefined,
-): string {
+export function formatInteractionType(value: string | null | undefined): string {
   const normalized = normalizeDisplayValue(value);
 
   if (!normalized) {
@@ -218,9 +204,7 @@ export function generateAccountKey(_input?: {
 }): string {
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
-  const hex = Array.from(bytes, (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   return `acct_${hex}`;
 }
 
@@ -397,7 +381,13 @@ export function AddressValueLink({
   );
 }
 
-function NavLink({ href, label }: { href: string; label: string }) {
+function NavLink({
+  href,
+  label,
+}: {
+  href: string;
+  label: string;
+}) {
   return (
     <Link
       href={href}
@@ -460,7 +450,11 @@ function ThemeToggle({
   );
 }
 
-function SignInPanel({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
+function SignInPanel({
+  onSignedIn,
+}: {
+  onSignedIn: () => Promise<void>;
+}) {
   const supabase = createClient();
 
   const [signInEmail, setSignInEmail] = useState("");
@@ -503,14 +497,6 @@ function SignInPanel({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
       setMessage({
         tone: "error",
         text: "Please enter both email and password.",
-      });
-      return;
-    }
-
-    if (!email.endsWith("@certisbio.com")) {
-      setMessage({
-        tone: "error",
-        text: "Please use your @certisbio.com email address.",
       });
       return;
     }
@@ -596,7 +582,7 @@ function SignInPanel({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
 
     setMessage({
       tone: "success",
-      text: "Account request submitted. Check your email to confirm your account, then sign in with your password.",
+      text: "Account created. Check your email to confirm your account before signing in.",
     });
 
     setCreateEmail("");
@@ -653,8 +639,7 @@ function SignInPanel({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
           <div className="mb-2 text-sm font-semibold">Create Account</div>
 
           <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
-            New CERTIS users can create an account with a @certisbio.com email
-            and password.
+            New CERTIS users can create an account with a @certisbio.com email and password.
           </p>
 
           <div className="grid gap-4">
@@ -682,18 +667,14 @@ function SignInPanel({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
           </div>
 
           <div className="mt-4">
-            <SecondaryButton
-              onClick={handleCreateAccount}
-              disabled={isSubmitting}
-            >
+            <SecondaryButton onClick={handleCreateAccount} disabled={isSubmitting}>
               {isSubmitting ? "Working..." : "Create Account"}
             </SecondaryButton>
           </div>
         </div>
 
         <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-          Access is limited to CERTIS Biologicals users with @certisbio.com
-          email addresses.
+          Access is limited to CERTIS Biologicals users with @certisbio.com email addresses.
         </div>
 
         {message ? (
@@ -735,9 +716,7 @@ export function HubShell({
     if (storedTheme === "light" || storedTheme === "dark") {
       nextTheme = storedTheme;
     } else {
-      const prefersDark = window.matchMedia(
-        "(prefers-color-scheme: dark)",
-      ).matches;
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
       nextTheme = prefersDark ? "dark" : "light";
     }
 
@@ -895,22 +874,11 @@ export function HubShell({
                 </div>
 
                 <nav className="mt-5 flex flex-wrap gap-2">
-                  {pathname !== "/" ? (
-                    <NavLink href="/" label="Launch Page" />
-                  ) : null}
+                  {pathname !== "/" ? <NavLink href="/" label="Launch Page" /> : null}
                   <NavLink href="/add-contact" label="Add New Person" />
-                  <NavLink
-                    href="/add-account"
-                    label="Add New Account / Location"
-                  />
-                  <NavLink
-                    href="/search-contacts"
-                    label="Search Existing People"
-                  />
-                  <NavLink
-                    href="/account-dashboard"
-                    label="Commercial Intelligence Hub"
-                  />
+                  <NavLink href="/add-account" label="Add New Account / Location" />
+                  <NavLink href="/search-contacts" label="Search Existing People" />
+                  <NavLink href="/account-dashboard" label="Commercial Intelligence Hub" />
                 </nav>
               </header>
 
@@ -939,13 +907,9 @@ export function SectionCard({
       className={`rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900 ${className}`}
     >
       <div className="mb-4">
-        <h2 className="text-xl font-bold text-slate-900 dark:text-[#ffd84d]">
-          {title}
-        </h2>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-[#ffd84d]">{title}</h2>
         {description ? (
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            {description}
-          </p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{description}</p>
         ) : null}
       </div>
       {children}
@@ -1109,7 +1073,11 @@ export function StatusMessage({
   );
 }
 
-export function RecordBadge({ children }: { children: React.ReactNode }) {
+export function RecordBadge({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
       {children}
@@ -1148,16 +1116,15 @@ export function InteractionPanel({
 
   const toggleStage = (stage: string) => {
     setStages((prev) =>
-      prev.includes(stage) ? prev.filter((s) => s !== stage) : [...prev, stage],
+      prev.includes(stage)
+        ? prev.filter((s) => s !== stage)
+        : [...prev, stage],
     );
   };
 
   const handleSave = async () => {
     if (!summary.trim()) {
-      setMessage({
-        tone: "error",
-        text: "Please enter a purpose before saving.",
-      });
+      setMessage({ tone: "error", text: "Please enter a purpose before saving." });
       return;
     }
 
@@ -1170,7 +1137,7 @@ export function InteractionPanel({
     setMessage(null);
 
     const legacyContactId =
-      selectedSourceTable === "contacts" ? (selectedContact?.id ?? null) : null;
+      selectedSourceTable === "contacts" ? selectedContact?.id ?? null : null;
 
     const { error } = await supabase.from("interactions").insert({
       person_id: selectedPersonId ?? null,
@@ -1216,9 +1183,7 @@ export function InteractionPanel({
             Linked Account
           </div>
           <div className="mt-1 font-semibold">
-            {selectedAccount
-              ? getAccountDisplayName(selectedAccount)
-              : "None selected"}
+            {selectedAccount ? getAccountDisplayName(selectedAccount) : "None selected"}
           </div>
         </div>
 
@@ -1227,9 +1192,7 @@ export function InteractionPanel({
             Linked Person
           </div>
           <div className="mt-1 font-semibold">
-            {selectedContact
-              ? getPersonFullName(selectedContact)
-              : "None selected"}
+            {selectedContact ? getPersonFullName(selectedContact) : "None selected"}
           </div>
         </div>
       </div>
@@ -1242,14 +1205,8 @@ export function InteractionPanel({
           options={[
             { value: "call", label: formatInteractionType("call") },
             { value: "email", label: formatInteractionType("email") },
-            {
-              value: "in_person_visit",
-              label: formatInteractionType("in_person_visit"),
-            },
-            {
-              value: "virtual_meeting",
-              label: formatInteractionType("virtual_meeting"),
-            },
+            { value: "in_person_visit", label: formatInteractionType("in_person_visit") },
+            { value: "virtual_meeting", label: formatInteractionType("virtual_meeting") },
             { value: "trial", label: formatInteractionType("trial") },
             { value: "note", label: formatInteractionType("note") },
           ]}
