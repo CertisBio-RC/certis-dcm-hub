@@ -1874,22 +1874,34 @@ export default function BulkInteractionsPage() {
       };
     }
 
-    const { data, error } = await supabase
-      .from("interactions")
-      .select("import_key")
-      .in("import_key", usableKeys);
+    const duplicateKeys = new Set<string>();
+    const chunkSize = 25;
 
-    if (error) {
-      return {
-        duplicateKeys: new Set<string>(),
-        isReady: false,
-        errorMessage:
-          `${error.message}. Run the import_key SQL migration before importing. Preview can continue, but import is blocked until this is fixed.`,
-      };
+    for (let index = 0; index < usableKeys.length; index += chunkSize) {
+      const keyChunk = usableKeys.slice(index, index + chunkSize);
+
+      const { data, error } = await supabase
+        .from("interactions")
+        .select("import_key")
+        .in("import_key", keyChunk);
+
+      if (error) {
+        return {
+          duplicateKeys: new Set<string>(),
+          isReady: false,
+          errorMessage:
+            `${error.message}. Duplicate checking could not complete. Confirm authenticated users can select interactions.import_key, then preview again.`,
+        };
+      }
+
+      (data ?? []).forEach((row) => {
+        const importKey = normalizeValue(row.import_key);
+        if (importKey) duplicateKeys.add(importKey);
+      });
     }
 
     return {
-      duplicateKeys: new Set((data ?? []).map((row) => normalizeValue(row.import_key))),
+      duplicateKeys,
       isReady: true,
       errorMessage: null,
     };
@@ -2210,7 +2222,7 @@ export default function BulkInteractionsPage() {
     if (!isImportKeyReady) {
       setMessage({
         tone: "error",
-        text: "Import is blocked until the import_key SQL migration is run in Supabase. Preview is available, but duplicate-safe import requires the import_key column and unique index.",
+        text: "Import is blocked until duplicate checking succeeds. Refresh, preview again, and confirm authenticated users can select interactions.import_key.",
       });
       return;
     }
@@ -2238,7 +2250,7 @@ export default function BulkInteractionsPage() {
           tone: "error",
           text:
             duplicateCheck.errorMessage ||
-            "Import is blocked until the import_key SQL migration is run in Supabase.",
+            "Import is blocked until duplicate checking succeeds.",
         });
         setIsImporting(false);
         return;
@@ -2652,7 +2664,7 @@ export default function BulkInteractionsPage() {
               <div className="mt-4">
                 <StatusMessage
                   tone="error"
-                  message="The import_key SQL migration has not been detected. Preview can continue, but duplicate-safe import is blocked until the column and unique index are created in Supabase."
+                  message="Duplicate checking could not complete. Preview can continue, but import is blocked until the duplicate-check query succeeds."
                 />
               </div>
             ) : null}
