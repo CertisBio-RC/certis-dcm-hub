@@ -1229,12 +1229,12 @@ function classifyRow(row: RawImportRow, candidates: MatchCandidate[]): {
     });
   }
 
-  const matchedPersonNameNeedsFix =
-    top.person_name_is_junk && hasUsableName && normalizeForMatch(row.person_name) !== normalizeForMatch(top.person_name);
+  const displayedPersonNameNeedsFix = isWeakOrJunkName(row.person_name);
+  const matchedPersonNameNeedsFix = top.person_name_is_junk || displayedPersonNameNeedsFix;
 
   if (matchedPersonNameNeedsFix) {
     completionNotes.push(
-      "Matched existing person has an email-style or weak name. Correct Person Name here and import will update the existing person record before saving the interaction.",
+      "Matched existing person or preview row has an email-style or weak name. Correct Person Name here and import will update the existing person record before saving the interaction.",
     );
 
     return buildClassification({
@@ -1245,7 +1245,7 @@ function classifyRow(row: RawImportRow, candidates: MatchCandidate[]): {
       completionNotes,
       canCreatePerson,
       requiresPersonNameFix: true,
-      matchedPersonOriginalName: top.person_name,
+      matchedPersonOriginalName: top.person_name || row.person_name,
     });
   }
 
