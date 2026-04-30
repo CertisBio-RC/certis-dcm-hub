@@ -86,6 +86,7 @@ type PreviewRow = RawImportRow & {
   can_create_person: boolean;
   requires_person_name_fix: boolean;
   matched_person_original_name: string | null;
+  needs_manual_review: boolean;
   duplicate_status: "unchecked" | "duplicate" | "new";
 };
 
@@ -1302,6 +1303,15 @@ function classifyRow(row: RawImportRow, candidates: MatchCandidate[]): {
   });
 }
 
+function rowNeedsManualReview(row: PreviewRow): boolean {
+  if (row.preview_lane !== "needs_completion") return false;
+  if (row.requires_person_name_fix) return true;
+  if (row.person_action === "possible") return true;
+  if (row.completion_notes.length > 0) return true;
+  if (row.error_message) return true;
+  return false;
+}
+
 function rebuildPreviewRow(row: PreviewRow): PreviewRow {
   const selectedCandidate = row.possible_candidates.find(
     (candidate) => candidate.id === row.selected_possible_candidate_id,
@@ -1342,6 +1352,10 @@ function rebuildPreviewRow(row: PreviewRow): PreviewRow {
     can_create_person: classification.canCreatePerson,
     requires_person_name_fix: classification.requiresPersonNameFix,
     matched_person_original_name: classification.matchedPersonOriginalName,
+    needs_manual_review:
+      row.needs_manual_review ||
+      classification.lane === "needs_completion" ||
+      classification.requiresPersonNameFix,
     duplicate_status: "unchecked",
   };
 }
@@ -1514,6 +1528,7 @@ function PreviewLaneCard({
   onFieldChange,
   onActionChange,
   onCandidateChange,
+  onMarkComplete,
 }: {
   title: string;
   description: string;
@@ -1523,6 +1538,7 @@ function PreviewLaneCard({
   onFieldChange: (rowNumber: number, field: keyof RawImportRow, value: string) => void;
   onActionChange: (rowNumber: number, action: PersonAction) => void;
   onCandidateChange: (rowNumber: number, value: string) => void;
+  onMarkComplete: (rowNumber: number) => void;
 }) {
   return (
     <SectionCard title={title} description={description}>
@@ -1619,6 +1635,15 @@ function PreviewLaneCard({
                   </label>
                 </div>
 
+                {row.preview_lane === "needs_completion" && row.needs_manual_review ? (
+                  <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-100">
+                    <div className="font-bold">Manual review required</div>
+                    <div className="mt-1">
+                      This card will stay in Needs Completion while you edit it. When the values are correct, click <span className="font-bold">Save & Move to Ready</span>.
+                    </div>
+                  </div>
+                ) : null}
+
                 {row.requires_person_name_fix ? (
                   <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
                     <div className="font-bold">Existing person name cleanup required</div>
@@ -1670,6 +1695,16 @@ function PreviewLaneCard({
                     >
                       Create Person
                     </button>
+                    {row.preview_lane === "needs_completion" ? (
+                      <button
+                        type="button"
+                        onClick={() => onMarkComplete(row.row_number)}
+                        className="inline-flex rounded-full border border-emerald-500 bg-emerald-700 px-3 py-1 text-xs font-semibold text-white transition hover:bg-emerald-600 dark:border-emerald-400 dark:bg-emerald-500 dark:text-slate-950"
+                      >
+                        Save & Move to Ready
+                      </button>
+                    ) : null}
+
                     <button
                       type="button"
                       onClick={() => onActionChange(row.row_number, "skip")}
@@ -2003,6 +2038,9 @@ export default function BulkInteractionsPage() {
           can_create_person: classification.canCreatePerson,
           requires_person_name_fix: classification.requiresPersonNameFix,
           matched_person_original_name: classification.matchedPersonOriginalName,
+          needs_manual_review:
+            classification.lane === "needs_completion" ||
+            classification.requiresPersonNameFix,
           duplicate_status: "unchecked",
         };
       });
@@ -2066,6 +2104,15 @@ export default function BulkInteractionsPage() {
           ...row,
           [field]: value,
         });
+
+        if (row.preview_lane === "needs_completion" || row.needs_manual_review) {
+          return {
+            ...updated,
+            preview_lane: "needs_completion",
+            needs_manual_review: true,
+          };
+        }
+
         return updated;
       }),
     );
@@ -2114,7 +2161,14 @@ export default function BulkInteractionsPage() {
           return {
             ...updated,
             person_action: "create",
-            preview_lane: updated.completion_notes.length > 0 ? "needs_completion" : "ready",
+            preview_lane:
+              row.preview_lane === "needs_completion"
+                ? "needs_completion"
+                : updated.completion_notes.length > 0
+                  ? "needs_completion"
+                  : "ready",
+            needs_manual_review:
+              row.preview_lane === "needs_completion" || updated.completion_notes.length > 0,
             matched_person_id: null,
             matched_person_label: null,
           };
@@ -2159,9 +2213,15 @@ export default function BulkInteractionsPage() {
             ...updated,
             person_action: "matched",
             preview_lane:
-              updated.requires_person_name_fix || updated.completion_notes.length > 0
+              row.preview_lane === "needs_completion" ||
+              updated.requires_person_name_fix ||
+              updated.completion_notes.length > 0
                 ? "needs_completion"
                 : "ready",
+            needs_manual_review:
+              row.preview_lane === "needs_completion" ||
+              updated.requires_person_name_fix ||
+              updated.completion_notes.length > 0,
             matched_person_id: selectedCandidate.id,
             matched_person_label: selectedCandidate.label,
           };
@@ -2183,7 +2243,7 @@ export default function BulkInteractionsPage() {
 
         if (!selectedCandidate) return row;
 
-        return rebuildPreviewRow({
+        const updated = rebuildPreviewRow({
           ...row,
           selected_possible_candidate_id: selectedCandidate.id,
           ...(row.person_action === "matched"
@@ -2193,6 +2253,86 @@ export default function BulkInteractionsPage() {
               }
             : {}),
         });
+
+        if (row.preview_lane === "needs_completion" || row.needs_manual_review) {
+          return {
+            ...updated,
+            preview_lane: "needs_completion",
+            needs_manual_review: true,
+          };
+        }
+
+        return updated;
+      }),
+    );
+  };
+
+  const handleMarkComplete = (rowNumber: number) => {
+    setPreviewRows((current) =>
+      current.map((row) => {
+        if (row.row_number !== rowNumber) return row;
+
+        const selectedCandidate = row.possible_candidates.find(
+          (candidate) => candidate.id === row.selected_possible_candidate_id,
+        );
+
+        const rowForValidation = {
+          ...row,
+          person_action:
+            row.person_action === "possible" && selectedCandidate
+              ? "matched"
+              : row.person_action,
+          matched_person_id:
+            row.person_action === "possible" && selectedCandidate
+              ? selectedCandidate.id
+              : row.matched_person_id,
+          matched_person_label:
+            row.person_action === "possible" && selectedCandidate
+              ? selectedCandidate.label
+              : row.matched_person_label,
+        };
+
+        const rechecked = rebuildPreviewRow(rowForValidation);
+
+        const hasPurpose = Boolean(normalizeValue(rechecked.purpose));
+        const hasValidIdentity = Boolean(
+          isValidEmail(rechecked.email) || !isWeakOrJunkName(rechecked.person_name),
+        );
+        const hasAction =
+          rechecked.person_action === "matched" || rechecked.person_action === "create";
+        const hasResolvedPerson =
+          rechecked.person_action === "create" || Boolean(rechecked.matched_person_id);
+        const nameIsClean = !isWeakOrJunkName(rechecked.person_name);
+
+        if (!hasPurpose || !hasValidIdentity || !hasAction || !hasResolvedPerson || !nameIsClean) {
+          return {
+            ...rechecked,
+            preview_lane: "needs_completion",
+            needs_manual_review: true,
+            error_message:
+              "This row still needs a clean person name, purpose, and resolved person action before it can move to Ready.",
+            completion_notes: Array.from(
+              new Set([
+                ...rechecked.completion_notes,
+                !nameIsClean ? "Enter a clean real Person Name before moving to Ready." : "",
+                !hasPurpose ? "Purpose / summary is required before import." : "",
+                !hasResolvedPerson
+                  ? "Choose Use Existing Person or Create Person before moving to Ready."
+                  : "",
+              ].filter(Boolean)),
+            ),
+          };
+        }
+
+        return {
+          ...rechecked,
+          preview_lane: "ready",
+          needs_manual_review: false,
+          requires_person_name_fix: row.requires_person_name_fix,
+          matched_person_original_name: row.matched_person_original_name,
+          error_message: null,
+          completion_notes: [],
+        };
       }),
     );
   };
@@ -2204,6 +2344,7 @@ export default function BulkInteractionsPage() {
       const statusAllowsImport = row.person_action === "matched" || row.person_action === "create";
       return (
         row.preview_lane === "ready" &&
+        !row.needs_manual_review &&
         statusAllowsImport &&
         hasPurpose &&
         hasIdentity &&
@@ -2700,6 +2841,7 @@ export default function BulkInteractionsPage() {
                 onFieldChange={handlePreviewFieldChange}
                 onActionChange={handlePreviewRowAction}
                 onCandidateChange={handleCandidateSelectionChange}
+                onMarkComplete={handleMarkComplete}
               />
 
               <PreviewLaneCard
@@ -2711,6 +2853,7 @@ export default function BulkInteractionsPage() {
                 onFieldChange={handlePreviewFieldChange}
                 onActionChange={handlePreviewRowAction}
                 onCandidateChange={handleCandidateSelectionChange}
+                onMarkComplete={handleMarkComplete}
               />
 
               <PreviewLaneCard
@@ -2722,6 +2865,7 @@ export default function BulkInteractionsPage() {
                 onFieldChange={handlePreviewFieldChange}
                 onActionChange={handlePreviewRowAction}
                 onCandidateChange={handleCandidateSelectionChange}
+                onMarkComplete={handleMarkComplete}
               />
             </div>
           )}
