@@ -2546,13 +2546,15 @@ export default function BulkInteractionsPage() {
             }
           }
 
+          const stageForImport = normalizedStageForImport(row.stage);
+
           const interactionPayload = {
             person_id: personId,
             date: normalizeDateForImport(row.interaction_date),
             type: row.normalized_interaction_type,
             summary: normalizeValue(row.purpose),
             details: normalizeValue(row.prepared_details) || null,
-            stage: normalizedStageForImport(row.stage),
+            stage: stageForImport ? [stageForImport] : null,
             import_key: row.import_key,
           };
 
