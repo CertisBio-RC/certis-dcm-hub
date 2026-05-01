@@ -1450,7 +1450,7 @@ function FailureList({
   return (
     <SectionCard
       title="Import Failures"
-      description="These rows were parsed successfully but failed during validation or insert."
+      description="These rows failed validation or insert. Duplicate rows are counted separately and skipped safely."
     >
       <div className="max-h-[420px] space-y-3 overflow-y-auto pr-2">
         {failures.map((failure, index) => (
@@ -2403,14 +2403,6 @@ export default function BulkInteractionsPage() {
         try {
           if (duplicateKeys.has(row.import_key)) {
             duplicatesSkipped += 1;
-            failures.push({
-              row_number: row.row_number,
-              person_name: normalizeValue(row.person_name),
-              company_name: normalizeValue(row.company_name),
-              interaction_type: row.normalized_interaction_type,
-              stage: "duplicate",
-              message: "Skipped because import_key already exists in interactions.",
-            });
             continue;
           }
 
