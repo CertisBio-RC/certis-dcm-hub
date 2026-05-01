@@ -190,6 +190,81 @@ const REQUIRED_FIELDS_FOR_IMPORT: AppField[] = [];
 
 const VALID_STAGES = ["introduction", "education", "evaluation", "adoption"];
 
+const COMPANY_NAME_MAP: Record<string, string> = {
+  agvantagefs: "AgVantage FS",
+  cpicoop: "Cooperative Producers Inc.",
+  cpi: "Cooperative Producers Inc.",
+  riw2000: "Rosen's",
+  rosen: "Rosen's",
+  rosens: "Rosen's",
+  tracyseeds: "Tracy Seeds",
+  coopfe: "Cooperative Farmers Elevator",
+  cooperativefarmerselevator: "Cooperative Farmers Elevator",
+  hullcoop: "Hull Coop",
+  landus: "Landus",
+  afschem: "Asmus Farm Supply",
+  asmusfarmsupply: "Asmus Farm Supply",
+  nutrien: "Nutrien",
+  countrypartnerscoop: "Country Partners Coop",
+  growmark: "GROWMARK",
+  cvacoop: "Central Valley Ag Coop",
+  centralvalleyagcoop: "Central Valley Ag Coop",
+  hilinecoop: "Hi-Line Coop",
+  chsinc: "CHS - Rochester",
+  chs: "CHS - Rochester",
+  auroracoop: "Aurora Coop",
+  agtegra: "Agtegra",
+  agcall: "AgCall",
+  c6agri: "C6 Agri",
+  redstarne: "Red Star",
+  redstarfertilizer: "Red Star Fertilizer",
+  agvalley: "Ag Valley Coop",
+  newcoop: "NEW Cooperative",
+  helenaagri: "Helena",
+  helena: "Helena",
+  fscoop: "Farm Service Cooperative",
+  fs: "Farm Service Cooperative",
+  cfc4ag: "CFC4 Ag",
+  farmerspridecoop: "Farmers Pride Coop",
+  farmerspride: "Farmers Pride",
+  fvcoop: "Frenchman Valley Coop",
+  frenchmanvalleycoop: "Frenchman Valley Coop",
+  wellsagsupply: "Wells Ag Supply",
+  keotafarmerscoop: "Keota Farmers Coop",
+  agwrxcoop: "Ag WRX Coop",
+  landolakes: "Winfield",
+  winfield: "Winfield",
+  westcon: "West-Con",
+  agpartners: "Ag Partners",
+  threeriversfs: "Three Rivers FS",
+  heartlandcoop: "Heartland Coop",
+  agrilandfs: "AgriLand FS",
+  mfcoop: "MF Coop",
+  brandt: "BRANDT",
+  agmgmtsolutions: "Ag Management Solutions",
+  bajayuccacompany: "Baja Yucca Company",
+  conduit: "Conduit",
+  certisusa1: "Certis USA",
+  practicalfarmers: "Practical Farmers of Iowa",
+  rippleag: "Ripple Ag",
+  syngenta: "Syngenta",
+  agroplantae: "AgroPlantae",
+};
+
+const PERSONAL_EMAIL_DOMAIN_KEYS = new Set([
+  "gmail",
+  "yahoo",
+  "hotmail",
+  "outlook",
+  "icloud",
+  "aol",
+  "msn",
+  "live",
+  "me",
+  "protonmail",
+]);
+
+
 const FIELD_METADATA: Record<
   AppField,
   { label: string; description: string; group: "contact" | "interaction" }
@@ -517,6 +592,46 @@ function normalizeEmail(value: string | null | undefined): string {
   return normalizeValue(value).toLowerCase();
 }
 
+function normalizeCompanyKey(value: string | null | undefined): string {
+  return normalizeValue(value)
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function getEmailDomainKey(value: string | null | undefined): string {
+  const email = normalizeEmail(value);
+  if (!isValidEmail(email)) return "";
+
+  const domainPart = email.split("@")[1] ?? "";
+  const firstDomainSegment = domainPart.split(".")[0] ?? "";
+  return normalizeCompanyKey(firstDomainSegment);
+}
+
+function canonicalizeCompanyName(
+  companyName: string | null | undefined,
+  email: string | null | undefined,
+): string {
+  const rawCompany = normalizeValue(companyName);
+  const rawCompanyKey = normalizeCompanyKey(rawCompany);
+
+  if (rawCompanyKey && COMPANY_NAME_MAP[rawCompanyKey]) {
+    return COMPANY_NAME_MAP[rawCompanyKey];
+  }
+
+  if (rawCompany && rawCompanyKey.length > 2 && !PERSONAL_EMAIL_DOMAIN_KEYS.has(rawCompanyKey)) {
+    return rawCompany;
+  }
+
+  const emailDomainKey = getEmailDomainKey(email);
+
+  if (!emailDomainKey || PERSONAL_EMAIL_DOMAIN_KEYS.has(emailDomainKey)) {
+    return rawCompany;
+  }
+
+  return COMPANY_NAME_MAP[emailDomainKey] ?? rawCompany;
+}
+
 function isValidEmail(value: string | null | undefined): boolean {
   const email = normalizeEmail(value);
   if (!email) return false;
@@ -579,11 +694,16 @@ function coerceRawIdentityFields(row: RawImportRow): RawImportRow {
   const sourceEmail = normalizeValue(row.email);
   const emailFromName = extractFirstEmailAddress(sourcePersonName);
   const cleanName = cleanPersonNameFromSource(sourcePersonName);
+  const normalizedEmail = isValidEmail(sourceEmail)
+    ? normalizeEmail(sourceEmail)
+    : emailFromName || sourceEmail;
+  const canonicalCompanyName = canonicalizeCompanyName(row.company_name, normalizedEmail);
 
   return {
     ...row,
     person_name: cleanName || sourcePersonName,
-    email: isValidEmail(sourceEmail) ? normalizeEmail(sourceEmail) : emailFromName || sourceEmail,
+    email: normalizedEmail,
+    company_name: canonicalCompanyName,
   };
 }
 
@@ -599,10 +719,12 @@ function applyMatchedPersonDisplay(
       isWeakOrJunkName(row.person_name) && matchedCandidate.person_name
         ? matchedCandidate.person_name
         : row.person_name,
-    company_name:
+    company_name: canonicalizeCompanyName(
       !normalizeValue(row.company_name) && matchedCandidate.company_name
         ? matchedCandidate.company_name
         : row.company_name,
+      row.email || matchedCandidate.email,
+    ),
     email:
       !isValidEmail(row.email) && matchedCandidate.email
         ? normalizeEmail(matchedCandidate.email)
