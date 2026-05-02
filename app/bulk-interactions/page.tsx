@@ -2668,7 +2668,7 @@ export default function BulkInteractionsPage() {
             type: row.normalized_interaction_type,
             summary: normalizeValue(row.purpose),
             details: normalizeValue(row.prepared_details) || null,
-            stage: stageForImport ? [stageForImport] : null,
+            stage: null,
             import_key: row.import_key,
           };
 
