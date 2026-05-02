@@ -62,17 +62,6 @@ type PeopleRow = {
   updated_at: string | null;
 };
 
-type LegacyLinkRow = {
-  id: string;
-  email: string | null;
-  corporate_kingpin: string | null;
-  regional_kingpin: string | null;
-  company_name: string | null;
-  national_name: string | null;
-  supplier: string | null;
-  state: string | null;
-};
-
 type PersonAccountLinkRow = {
   id: string;
   person_id: string;
@@ -88,6 +77,7 @@ type InteractionRow = {
   id: string;
   user_id: string | null;
   contact_id: string | null;
+  person_id: string | null;
   date: string | null;
   type: string | null;
   summary: string | null;
@@ -95,7 +85,7 @@ type InteractionRow = {
   outcome: string | null;
   follow_up_date: string | null;
   created_at: string | null;
-  stage: string | null;
+  stage: string | string[] | null;
 };
 
 type AccountEditForm = {
@@ -112,9 +102,12 @@ type AccountEditForm = {
 type SummaryCounts = {
   totalAccounts: number;
   totalAgronomyAccounts: number;
+  totalPeople: number;
   totalContacts: number;
   totalKingpins: number;
   totalInteractions: number;
+  linkedPeople: number;
+  linkedInteractions: number;
 };
 
 type StageKey =
@@ -123,49 +116,34 @@ type StageKey =
   | "field_evaluation"
   | "adoption";
 
+type AccountGroup = {
+  key: string;
+  longName: string;
+  canonicalName: string;
+  accounts: AccountRow[];
+  people: PeopleRow[];
+  interactions: InteractionRow[];
+  directLocationCount: number;
+  agronomyLocationCount: number;
+  lastInteractionDate: string | null;
+};
+
 const ACCOUNT_SELECT =
   "id, source_system, source_file, source_sheet, source_row_number, account_key, long_name, retailer, name, address, city, state, zip, category, suppliers, is_active, created_at, updated_at, office_phone, row_crop_relevance";
 
 const PEOPLE_SELECT =
   "id, account_id, full_name, first_name, last_name, national_name, company_name, supplier, title, address, city, state, zip, office_phone, cell_phone, email, contact_type, is_kingpin, legacy_contact_id, legacy_kingpin_id, created_at, updated_at";
 
-const LEGACY_LINK_SELECT =
-  "id, email, corporate_kingpin, regional_kingpin, company_name, national_name, supplier, state";
-
 const PERSON_ACCOUNT_LINK_SELECT =
   "id, person_id, account_id, link_type, is_primary, notes, created_at, updated_at";
 
 const INTERACTION_SELECT =
-  "id, user_id, contact_id, date, type, summary, details, outcome, follow_up_date, created_at, stage";
+  "id, user_id, contact_id, person_id, date, type, summary, details, outcome, follow_up_date, created_at, stage";
 
-const COMMON_BUSINESS_STOPWORDS = new Set([
-  "inc",
-  "llc",
-  "ltd",
-  "co",
-  "company",
-  "companies",
-  "corp",
-  "corporation",
-  "group",
-  "services",
-  "service",
-  "center",
-  "centers",
-  "location",
-  "locations",
-  "store",
-  "stores",
-  "energy",
-  "holdings",
-  "partners",
-  "partner",
-  "association",
-  "assoc",
-  "the",
-  "and",
-  "of",
-]);
+const SESSION_QUERY_KEY = "certis-ci-query";
+const SESSION_GROUP_KEY = "certis-ci-selected-group";
+const SESSION_ACCOUNT_KEY = "certis-ci-selected-account";
+const SESSION_SCROLL_KEY = "certis-ci-scroll-y";
 
 function normalizeValue(value: string | null | undefined): string {
   return (value ?? "").trim();
@@ -176,81 +154,49 @@ function normalizeForMatch(value: string | null | undefined): string {
     .toLowerCase()
     .replace(/co[\s-]?op/g, "coop")
     .replace(/\bcooperative\b/g, "coop")
-    .replace(/\bassociation\b/g, "assoc")
     .replace(/&/g, " and ")
     .replace(/[^\w\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
-  return Array.from(
-    new Set(
-      values
-        .map((value) => normalizeValue(value))
-        .filter(Boolean),
-    ),
+function normalizeCompact(value: string | null | undefined): string {
+  return normalizeForMatch(value).replace(/\s+/g, "");
+}
+
+function getAccountGroupKey(account: AccountRow): string {
+  return normalizeCompact(account.long_name || account.retailer || account.name || account.id) || account.id;
+}
+
+function getAccountGroupName(account: AccountRow): string {
+  return (
+    normalizeValue(account.long_name) ||
+    normalizeValue(account.retailer) ||
+    normalizeValue(account.name) ||
+    "Unnamed Account"
   );
 }
 
-function splitSupplierTokens(value: string | null | undefined): string[] {
-  return normalizeValue(value)
-    .split(/[;,]/)
-    .map((item) => normalizeForMatch(item))
-    .filter(Boolean);
+function getAccountDisplayName(account: AccountRow | null): string {
+  if (!account) return "No location selected";
+
+  return (
+    account.name ||
+    account.long_name ||
+    account.retailer ||
+    [account.city, account.state].filter(Boolean).join(", ") ||
+    "Unnamed Location"
+  );
 }
 
-function getSignificantWords(value: string | null | undefined): string[] {
-  return normalizeForMatch(value)
-    .split(" ")
-    .filter((word) => word.length >= 3 && !COMMON_BUSINESS_STOPWORDS.has(word));
-}
+function getAccountAddress(account: AccountRow | null): string {
+  if (!account) return "Not listed";
 
-function countSharedWords(a: string | null | undefined, b: string | null | undefined): number {
-  const aWords = new Set(getSignificantWords(a));
-  const bWords = new Set(getSignificantWords(b));
-
-  let count = 0;
-  aWords.forEach((word) => {
-    if (bWords.has(word)) count += 1;
-  });
-
-  return count;
-}
-
-function companyNamesStronglyMatch(
-  left: string | null | undefined,
-  right: string | null | undefined,
-): boolean {
-  const a = normalizeForMatch(left);
-  const b = normalizeForMatch(right);
-
-  if (!a || !b) return false;
-  if (a === b) return true;
-
-  const sharedWords = countSharedWords(a, b);
-  if (sharedWords >= 2) return true;
-
-  const shorter = a.length <= b.length ? a : b;
-  const longer = a.length <= b.length ? b : a;
-  const shorterWords = getSignificantWords(shorter);
-  const longerWords = getSignificantWords(longer);
-
-  if (
-    shorterWords.length === 1 &&
-    shorterWords[0] &&
-    shorterWords[0].length >= 5 &&
-    longerWords.includes(shorterWords[0]) &&
-    longer.startsWith(shorterWords[0])
-  ) {
-    return true;
-  }
-
-  if (shorter.length >= 8 && longer.includes(shorter) && sharedWords >= 1) {
-    return true;
-  }
-
-  return false;
+  return (
+    [account.address, account.city, account.state, account.zip]
+      .filter(Boolean)
+      .join(", ") || "Not listed"
+  );
 }
 
 function joinedName(
@@ -277,26 +223,26 @@ function getPersonCompany(person: PeopleRow): string {
   );
 }
 
-function getAccountDisplayName(account: AccountRow | null): string {
-  if (!account) return "No account selected";
-
-  return (
-    account.long_name ||
-    account.name ||
-    account.retailer ||
-    [account.city, account.state].filter(Boolean).join(", ") ||
-    "Unnamed Account"
+function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
+  return Array.from(
+    new Set(values.map((value) => normalizeValue(value)).filter(Boolean)),
   );
 }
 
-function getAccountAddress(account: AccountRow | null): string {
-  if (!account) return "Not listed";
-
-  return (
-    [account.address, account.city, account.state, account.zip]
-      .filter(Boolean)
-      .join(", ") || "Not listed"
-  );
+function buildAccountSearchFields(account: AccountRow): Array<string | null | undefined> {
+  return [
+    account.long_name,
+    account.retailer,
+    account.name,
+    account.address,
+    account.city,
+    account.state,
+    account.zip,
+    account.category,
+    account.suppliers,
+    account.account_key,
+    account.row_crop_relevance,
+  ];
 }
 
 function buildPeopleSearchFields(person: PeopleRow): Array<string | null | undefined> {
@@ -328,80 +274,14 @@ function searchIncludes(values: Array<string | null | undefined>, query: string)
 
 function isHeadquartersAccount(account: AccountRow): boolean {
   const category = normalizeForMatch(account.category);
-  return category.includes("corporate") || category.includes("regional");
+  return category.includes("corporate") || category.includes("regional") || category.includes("hq");
 }
 
 function isAgronomyAccount(account: AccountRow): boolean {
   const category = normalizeForMatch(account.category);
 
-  if (category.includes("corporate") || category.includes("regional")) {
-    return true;
-  }
-
+  if (isHeadquartersAccount(account)) return true;
   return category.includes("agronomy");
-}
-
-function hasManualAccountLink(
-  account: AccountRow,
-  person: PeopleRow,
-  manualLinks: PersonAccountLinkRow[],
-): boolean {
-  return manualLinks.some(
-    (link) => link.account_id === account.id && link.person_id === person.id,
-  );
-}
-
-function isLinkedPerson(
-  account: AccountRow,
-  person: PeopleRow,
-  manualLinks: PersonAccountLinkRow[],
-): boolean {
-  if (hasManualAccountLink(account, person, manualLinks)) return true;
-
-  if (person.account_id && account.id === person.account_id) return true;
-
-  const accountNames = uniqueNonEmpty([
-    account.long_name,
-    account.retailer,
-    account.name,
-  ]);
-
-  const personCompanies = uniqueNonEmpty([
-    person.company_name,
-    person.national_name,
-  ]);
-
-  if (accountNames.length === 0 || personCompanies.length === 0) {
-    return false;
-  }
-
-  const stateMatch =
-    !normalizeForMatch(account.state) ||
-    !normalizeForMatch(person.state) ||
-    normalizeForMatch(account.state) === normalizeForMatch(person.state);
-
-  if (!stateMatch) return false;
-
-  const strongNameMatch = accountNames.some((accountName) =>
-    personCompanies.some((personCompany) =>
-      companyNamesStronglyMatch(personCompany, accountName),
-    ),
-  );
-
-  if (!strongNameMatch) return false;
-
-  const accountSuppliers = splitSupplierTokens(account.suppliers);
-  const personSuppliers = splitSupplierTokens(person.supplier);
-
-  if (accountSuppliers.length > 0 && personSuppliers.length > 0) {
-    const supplierOverlap = accountSuppliers.some((supplier) =>
-      personSuppliers.includes(supplier),
-    );
-
-    if (!supplierOverlap) return false;
-  }
-
-  return true;
 }
 
 function sortAccounts(a: AccountRow, b: AccountRow): number {
@@ -412,6 +292,12 @@ function sortPeople(a: PeopleRow, b: PeopleRow): number {
   return getPersonDisplayName(a).localeCompare(getPersonDisplayName(b));
 }
 
+function sortInteractions(a: InteractionRow, b: InteractionRow): number {
+  const aDate = a.date ?? a.created_at ?? "";
+  const bDate = b.date ?? b.created_at ?? "";
+  return bDate.localeCompare(aDate);
+}
+
 function dedupePeople(people: PeopleRow[]): PeopleRow[] {
   const seen = new Set<string>();
   const result: PeopleRow[] = [];
@@ -420,6 +306,19 @@ function dedupePeople(people: PeopleRow[]): PeopleRow[] {
     if (seen.has(person.id)) continue;
     seen.add(person.id);
     result.push(person);
+  }
+
+  return result;
+}
+
+function dedupeInteractions(interactions: InteractionRow[]): InteractionRow[] {
+  const seen = new Set<string>();
+  const result: InteractionRow[] = [];
+
+  for (const interaction of interactions) {
+    if (seen.has(interaction.id)) continue;
+    seen.add(interaction.id);
+    result.push(interaction);
   }
 
   return result;
@@ -438,7 +337,7 @@ function buildEditForm(account: AccountRow | null): AccountEditForm {
   };
 }
 
-function formatInteractionDate(value: string | null | undefined): string {
+function formatDate(value: string | null | undefined): string {
   const raw = normalizeValue(value);
   if (!raw) return "No date";
 
@@ -452,17 +351,13 @@ function formatInteractionDate(value: string | null | undefined): string {
   }).format(parsed);
 }
 
-function formatInteractionType(value: string | null | undefined): string {
-  const raw = normalizeValue(value);
-  if (!raw) return "Unknown";
-
-  return raw
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (match) => match.toUpperCase());
+function getStageRawValue(value: string | string[] | null | undefined): string {
+  if (Array.isArray(value)) return value[0] ?? "";
+  return value ?? "";
 }
 
-function normalizeStageKey(value: string | null | undefined): StageKey | null {
-  const normalized = normalizeForMatch(value)
+function normalizeStageKey(value: string | string[] | null | undefined): StageKey | null {
+  const normalized = normalizeForMatch(getStageRawValue(value))
     .replace(/\//g, " ")
     .replace(/\s+/g, "_");
 
@@ -501,7 +396,7 @@ function normalizeStageKey(value: string | null | undefined): StageKey | null {
   return null;
 }
 
-function formatStageLabel(value: string | null | undefined): string {
+function formatStageLabel(value: string | string[] | null | undefined): string {
   const stage = normalizeStageKey(value);
 
   if (stage === "introduction") return "Introduction";
@@ -512,7 +407,16 @@ function formatStageLabel(value: string | null | undefined): string {
   return "Unstaged";
 }
 
-function getStageBadgeClasses(stage: string | null | undefined): string {
+function formatInteractionType(value: string | null | undefined): string {
+  const raw = normalizeValue(value);
+  if (!raw) return "Unknown";
+
+  return raw
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function getStageBadgeClasses(stage: string | string[] | null | undefined): string {
   const normalized = normalizeStageKey(stage);
 
   if (normalized === "introduction") {
@@ -534,8 +438,35 @@ function getStageBadgeClasses(stage: string | null | undefined): string {
   return "border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200";
 }
 
-function escapeLikeValue(value: string): string {
-  return value.replace(/[%_,]/g, " ").trim();
+function getHighestStage(interactions: InteractionRow[]): StageKey | null {
+  const stageOrder: StageKey[] = [
+    "introduction",
+    "technical_training",
+    "field_evaluation",
+    "adoption",
+  ];
+
+  let highest: StageKey | null = null;
+
+  interactions.forEach((interaction) => {
+    const stage = normalizeStageKey(interaction.stage);
+    if (!stage) return;
+
+    if (!highest || stageOrder.indexOf(stage) > stageOrder.indexOf(highest)) {
+      highest = stage;
+    }
+  });
+
+  return highest;
+}
+
+function formatHighestStage(interactions: InteractionRow[]): string {
+  const highest = getHighestStage(interactions);
+  if (highest === "introduction") return "Introduction";
+  if (highest === "technical_training") return "Technical Training";
+  if (highest === "field_evaluation") return "Field Evaluation";
+  if (highest === "adoption") return "Adoption";
+  return "Unstaged";
 }
 
 function KpiCard({ label, value }: { label: string; value: string | number }) {
@@ -577,54 +508,93 @@ async function fetchAllRows<T>(
   return rows;
 }
 
-function getLegacyNameCandidates(person: PeopleRow): string[] {
-  return uniqueNonEmpty([
-    person.full_name,
-    joinedName(person.first_name, person.last_name),
-  ]);
-}
-
-function matchesLegacyRowToPerson(person: PeopleRow, row: LegacyLinkRow): boolean {
-  if (person.legacy_contact_id && person.legacy_contact_id === row.id) return true;
-  if (person.legacy_kingpin_id && person.legacy_kingpin_id === row.id) return true;
-
-  const personEmail = normalizeForMatch(person.email);
-  const rowEmail = normalizeForMatch(row.email);
-
-  if (personEmail && rowEmail && personEmail === rowEmail) return true;
-
-  const personNames = getLegacyNameCandidates(person);
-  const rowNames = uniqueNonEmpty([row.corporate_kingpin, row.regional_kingpin]);
-
-  if (personNames.length === 0 || rowNames.length === 0) return false;
-
-  const stateMatch =
-    !normalizeForMatch(person.state) ||
-    !normalizeForMatch(row.state) ||
-    normalizeForMatch(person.state) === normalizeForMatch(row.state);
-
-  if (!stateMatch) return false;
-
-  const nameMatch = personNames.some((personName) =>
-    rowNames.some((rowName) => normalizeForMatch(personName) === normalizeForMatch(rowName)),
+function getPeopleForAccountIds(
+  accountIds: Set<string>,
+  people: PeopleRow[],
+  manualLinks: PersonAccountLinkRow[],
+): PeopleRow[] {
+  const directPeople = people.filter(
+    (person) => !!person.account_id && accountIds.has(person.account_id),
   );
 
-  if (!nameMatch) return false;
+  const manuallyLinkedPeopleIds = new Set(
+    manualLinks
+      .filter((link) => accountIds.has(link.account_id))
+      .map((link) => link.person_id),
+  );
 
-  const personCompanies = uniqueNonEmpty([person.company_name, person.national_name]);
-  const rowCompanies = uniqueNonEmpty([row.company_name, row.national_name]);
+  const manuallyLinkedPeople = people.filter((person) => manuallyLinkedPeopleIds.has(person.id));
 
-  if (personCompanies.length > 0 && rowCompanies.length > 0) {
-    const companyMatch = personCompanies.some((personCompany) =>
-      rowCompanies.some((rowCompany) =>
-        companyNamesStronglyMatch(personCompany, rowCompany),
-      ),
-    );
+  return dedupePeople([...directPeople, ...manuallyLinkedPeople]).sort(sortPeople);
+}
 
-    if (!companyMatch) return false;
-  }
+function getInteractionsForPeople(
+  people: PeopleRow[],
+  interactions: InteractionRow[],
+): InteractionRow[] {
+  const personIds = new Set(people.map((person) => person.id));
 
-  return true;
+  return dedupeInteractions(
+    interactions.filter((interaction) => !!interaction.person_id && personIds.has(interaction.person_id)),
+  ).sort(sortInteractions);
+}
+
+function buildAccountGroups(
+  accounts: AccountRow[],
+  people: PeopleRow[],
+  manualLinks: PersonAccountLinkRow[],
+  interactions: InteractionRow[],
+): AccountGroup[] {
+  const groupedAccounts = new Map<string, AccountRow[]>();
+
+  accounts.forEach((account) => {
+    const key = getAccountGroupKey(account);
+    const existing = groupedAccounts.get(key) ?? [];
+    existing.push(account);
+    groupedAccounts.set(key, existing);
+  });
+
+  return Array.from(groupedAccounts.entries())
+    .map(([key, accountRows]) => {
+      const sortedAccounts = [...accountRows].sort((a, b) => {
+        if (isHeadquartersAccount(a) !== isHeadquartersAccount(b)) {
+          return isHeadquartersAccount(a) ? -1 : 1;
+        }
+        return sortAccounts(a, b);
+      });
+
+      const accountIds = new Set(sortedAccounts.map((account) => account.id));
+      const groupPeople = getPeopleForAccountIds(accountIds, people, manualLinks);
+      const groupInteractions = getInteractionsForPeople(groupPeople, interactions);
+      const latestInteraction = groupInteractions[0] ?? null;
+      const firstAccount = sortedAccounts[0];
+
+      return {
+        key,
+        longName: getAccountGroupName(firstAccount),
+        canonicalName: normalizeCompact(firstAccount.long_name || firstAccount.retailer || firstAccount.name),
+        accounts: sortedAccounts,
+        people: groupPeople,
+        interactions: groupInteractions,
+        directLocationCount: sortedAccounts.length,
+        agronomyLocationCount: sortedAccounts.filter((account) => isAgronomyAccount(account)).length,
+        lastInteractionDate: latestInteraction?.date ?? latestInteraction?.created_at ?? null,
+      } satisfies AccountGroup;
+    })
+    .sort((a, b) => {
+      const aDate = a.lastInteractionDate ?? "";
+      const bDate = b.lastInteractionDate ?? "";
+
+      if (aDate || bDate) {
+        const dateCompare = bDate.localeCompare(aDate);
+        if (dateCompare !== 0) return dateCompare;
+      }
+
+      const interactionCompare = b.interactions.length - a.interactions.length;
+      if (interactionCompare !== 0) return interactionCompare;
+
+      return a.longName.localeCompare(b.longName);
+    });
 }
 
 export default function CommercialIntelligenceHubPage() {
@@ -634,25 +604,23 @@ export default function CommercialIntelligenceHubPage() {
   const [summaryCounts, setSummaryCounts] = useState<SummaryCounts>({
     totalAccounts: 0,
     totalAgronomyAccounts: 0,
+    totalPeople: 0,
     totalContacts: 0,
     totalKingpins: 0,
     totalInteractions: 0,
+    linkedPeople: 0,
+    linkedInteractions: 0,
   });
 
   const [allAccounts, setAllAccounts] = useState<AccountRow[]>([]);
   const [allPeople, setAllPeople] = useState<PeopleRow[]>([]);
-  const [legacyContacts, setLegacyContacts] = useState<LegacyLinkRow[]>([]);
-  const [legacyKingpins, setLegacyKingpins] = useState<LegacyLinkRow[]>([]);
   const [manualLinks, setManualLinks] = useState<PersonAccountLinkRow[]>([]);
   const [allInteractions, setAllInteractions] = useState<InteractionRow[]>([]);
 
-  const [accounts, setAccounts] = useState<AccountRow[]>([]);
-  const [selectedAccount, setSelectedAccount] = useState<AccountRow | null>(null);
-  const [linkedPeople, setLinkedPeople] = useState<PeopleRow[]>([]);
-  const [linkedInteractions, setLinkedInteractions] = useState<InteractionRow[]>([]);
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
   const [isLoadingBaseData, setIsLoadingBaseData] = useState(true);
-  const [isProcessingSearch, setIsProcessingSearch] = useState(false);
   const [message, setMessage] = useState<{
     tone: "success" | "error" | "info";
     text: string;
@@ -661,6 +629,63 @@ export default function CommercialIntelligenceHubPage() {
   const [isEditingAccount, setIsEditingAccount] = useState(false);
   const [isSavingAccount, setIsSavingAccount] = useState(false);
   const [editForm, setEditForm] = useState<AccountEditForm>(buildEditForm(null));
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    setQuery(window.sessionStorage.getItem(SESSION_QUERY_KEY) ?? "");
+    setSelectedGroupKey(window.sessionStorage.getItem(SESSION_GROUP_KEY));
+    setSelectedAccountId(window.sessionStorage.getItem(SESSION_ACCOUNT_KEY));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.sessionStorage.setItem(SESSION_QUERY_KEY, query);
+  }, [query]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (selectedGroupKey) {
+      window.sessionStorage.setItem(SESSION_GROUP_KEY, selectedGroupKey);
+    } else {
+      window.sessionStorage.removeItem(SESSION_GROUP_KEY);
+    }
+  }, [selectedGroupKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (selectedAccountId) {
+      window.sessionStorage.setItem(SESSION_ACCOUNT_KEY, selectedAccountId);
+    } else {
+      window.sessionStorage.removeItem(SESSION_ACCOUNT_KEY);
+    }
+  }, [selectedAccountId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const savedScroll = window.sessionStorage.getItem(SESSION_SCROLL_KEY);
+    if (savedScroll) {
+      window.requestAnimationFrame(() => {
+        window.scrollTo(0, Number(savedScroll));
+      });
+    }
+
+    const saveScroll = () => {
+      window.sessionStorage.setItem(SESSION_SCROLL_KEY, String(window.scrollY));
+    };
+
+    window.addEventListener("scroll", saveScroll, { passive: true });
+    window.addEventListener("beforeunload", saveScroll);
+
+    return () => {
+      saveScroll();
+      window.removeEventListener("scroll", saveScroll);
+      window.removeEventListener("beforeunload", saveScroll);
+    };
+  }, []);
 
   useEffect(() => {
     const loadBaseData = async () => {
@@ -674,8 +699,6 @@ export default function CommercialIntelligenceHubPage() {
           interactionsCountResponse,
           allAccountsData,
           allPeopleData,
-          legacyContactsData,
-          legacyKingpinsData,
           manualLinkData,
           allInteractionsData,
         ] = await Promise.all([
@@ -685,8 +708,6 @@ export default function CommercialIntelligenceHubPage() {
           supabase.from("interactions").select("*", { count: "exact", head: true }),
           fetchAllRows<AccountRow>(supabase, "accounts", ACCOUNT_SELECT),
           fetchAllRows<PeopleRow>(supabase, "people", PEOPLE_SELECT),
-          fetchAllRows<LegacyLinkRow>(supabase, "contacts", LEGACY_LINK_SELECT),
-          fetchAllRows<LegacyLinkRow>(supabase, "kingpins", LEGACY_LINK_SELECT),
           fetchAllRows<PersonAccountLinkRow>(
             supabase,
             "person_account_links",
@@ -695,22 +716,33 @@ export default function CommercialIntelligenceHubPage() {
           fetchAllRows<InteractionRow>(supabase, "interactions", INTERACTION_SELECT),
         ]);
 
+        const linkedPeopleCount = allPeopleData.filter((person) => !!person.account_id).length;
+        const linkedPersonIds = new Set(
+          allPeopleData.filter((person) => !!person.account_id).map((person) => person.id),
+        );
+        const linkedInteractionsCount = allInteractionsData.filter(
+          (interaction) => !!interaction.person_id && linkedPersonIds.has(interaction.person_id),
+        ).length;
+
         setSummaryCounts({
           totalAccounts: accountsCountResponse.count ?? 0,
-          totalAgronomyAccounts: allAccountsData.filter((account) =>
-            isAgronomyAccount(account),
-          ).length,
+          totalAgronomyAccounts: allAccountsData.filter((account) => isAgronomyAccount(account)).length,
+          totalPeople: allPeopleData.length,
           totalContacts: contactsCountResponse.count ?? 0,
           totalKingpins: kingpinsCountResponse.count ?? 0,
           totalInteractions: interactionsCountResponse.count ?? 0,
+          linkedPeople: linkedPeopleCount,
+          linkedInteractions: linkedInteractionsCount,
         });
 
         setAllAccounts(allAccountsData.sort(sortAccounts));
         setAllPeople(allPeopleData.sort(sortPeople));
-        setLegacyContacts(legacyContactsData);
-        setLegacyKingpins(legacyKingpinsData);
         setManualLinks(manualLinkData);
-        setAllInteractions(allInteractionsData);
+        setAllInteractions(allInteractionsData.sort(sortInteractions));
+        setMessage({
+          tone: "success",
+          text: "Commercial Intelligence data loaded. Direct account activity is now based on people.account_id and person-linked interactions.",
+        });
         setIsLoadingBaseData(false);
       } catch (error) {
         const messageText =
@@ -729,354 +761,167 @@ export default function CommercialIntelligenceHubPage() {
     void loadBaseData();
   }, [supabase]);
 
-  const legacyIdsByPeopleId = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    const legacyRows = [...legacyContacts, ...legacyKingpins];
+  const allGroups = useMemo(
+    () => buildAccountGroups(allAccounts, allPeople, manualLinks, allInteractions),
+    [allAccounts, allPeople, manualLinks, allInteractions],
+  );
 
-    allPeople.forEach((person) => {
-      const ids = new Set<string>();
+  const filteredGroups = useMemo(() => {
+    const q = query.trim();
+    if (q.length < 2) return [];
 
-      legacyRows.forEach((row) => {
-        if (matchesLegacyRowToPerson(person, row)) {
-          ids.add(row.id);
-        }
-      });
+    return allGroups.filter((group) => {
+      const groupFields = [
+        group.longName,
+        ...group.accounts.flatMap((account) => buildAccountSearchFields(account)),
+        ...group.people.flatMap((person) => buildPeopleSearchFields(person)),
+      ];
 
-      map.set(person.id, ids);
+      return searchIncludes(groupFields, q);
     });
+  }, [allGroups, query]);
 
-    return map;
-  }, [allPeople, legacyContacts, legacyKingpins]);
+  const selectedGroup = useMemo(() => {
+    if (filteredGroups.length === 0) return null;
+
+    return (
+      filteredGroups.find((group) => group.key === selectedGroupKey) ??
+      filteredGroups[0]
+    );
+  }, [filteredGroups, selectedGroupKey]);
+
+  const selectedAccount = useMemo(() => {
+    if (!selectedGroup) return null;
+
+    return (
+      selectedGroup.accounts.find((account) => account.id === selectedAccountId) ??
+      selectedGroup.accounts[0] ??
+      null
+    );
+  }, [selectedGroup, selectedAccountId]);
 
   useEffect(() => {
-    if (isLoadingBaseData) return;
-
-    const q = query.trim();
-
-    if (q.length < 2) {
-      setAccounts([]);
-      setSelectedAccount(null);
-      setLinkedPeople([]);
-      setLinkedInteractions([]);
+    if (!selectedGroup) {
+      setSelectedGroupKey(null);
+      setSelectedAccountId(null);
       setIsEditingAccount(false);
       setEditForm(buildEditForm(null));
-      setMessage(null);
-      setIsProcessingSearch(false);
       return;
     }
 
-    let cancelled = false;
+    if (selectedGroup.key !== selectedGroupKey) {
+      setSelectedGroupKey(selectedGroup.key);
+    }
 
-    const runSearch = async () => {
-      setIsProcessingSearch(true);
+    const accountToSelect =
+      selectedGroup.accounts.find((account) => account.id === selectedAccountId) ??
+      selectedGroup.accounts[0] ??
+      null;
 
-      try {
-        const safeQuery = escapeLikeValue(q);
-        const pattern = `%${safeQuery}%`;
-
-        const directAccountResponse = await supabase
-          .from("accounts")
-          .select(ACCOUNT_SELECT)
-          .or(
-            [
-              `long_name.ilike.${pattern}`,
-              `retailer.ilike.${pattern}`,
-              `name.ilike.${pattern}`,
-              `address.ilike.${pattern}`,
-              `city.ilike.${pattern}`,
-              `state.ilike.${pattern}`,
-              `zip.ilike.${pattern}`,
-              `category.ilike.${pattern}`,
-              `suppliers.ilike.${pattern}`,
-              `account_key.ilike.${pattern}`,
-            ].join(","),
-          )
-          .limit(300);
-
-        if (directAccountResponse.error) throw directAccountResponse.error;
-
-        const matchedPeopleFromQuery = allPeople.filter((person) =>
-          searchIncludes(buildPeopleSearchFields(person), q),
-        );
-
-        const directlyLinkedAccountsFromPeople = allAccounts.filter((account) =>
-          matchedPeopleFromQuery.some(
-            (person) =>
-              hasManualAccountLink(account, person, manualLinks) ||
-              (person.account_id && person.account_id === account.id),
-          ),
-        );
-
-        const directAccounts = ((directAccountResponse.data ?? []) as AccountRow[]) ?? [];
-
-        const peopleLinkedAccounts = allAccounts.filter((account) =>
-          matchedPeopleFromQuery.some((person) => isLinkedPerson(account, person, manualLinks)),
-        );
-
-        const combinedMap = new Map<string, AccountRow>();
-        directAccounts.forEach((account) => combinedMap.set(account.id, account));
-        directlyLinkedAccountsFromPeople.forEach((account) => combinedMap.set(account.id, account));
-        peopleLinkedAccounts.forEach((account) => combinedMap.set(account.id, account));
-
-        const filteredAccounts = Array.from(combinedMap.values()).sort(sortAccounts);
-
-        if (cancelled) return;
-
-        setAccounts(filteredAccounts);
-
-        const nextSelectedAccount =
-          filteredAccounts.length === 0
-            ? null
-            : filteredAccounts.find((account) => account.id === selectedAccount?.id) ??
-              filteredAccounts[0];
-
-        setSelectedAccount(nextSelectedAccount);
-        setIsEditingAccount(false);
-        setEditForm(buildEditForm(nextSelectedAccount));
-
-        if (filteredAccounts.length === 0) {
-          setLinkedPeople([]);
-          setLinkedInteractions([]);
-          setMessage({
-            tone: "info",
-            text: "No accounts matched your search.",
-          });
-          setIsProcessingSearch(false);
-          return;
-        }
-
-        const aggregatedLinkedPeople = dedupePeople(
-          filteredAccounts.flatMap((account) =>
-            allPeople.filter((person) => isLinkedPerson(account, person, manualLinks)),
-          ),
-        ).sort(sortPeople);
-
-        const aggregatedLegacyIds = new Set<string>();
-        aggregatedLinkedPeople.forEach((person) => {
-          const ids = legacyIdsByPeopleId.get(person.id) ?? new Set<string>();
-          ids.forEach((id) => aggregatedLegacyIds.add(id));
-        });
-
-        const aggregatedInteractions = allInteractions.filter(
-          (interaction) =>
-            !!interaction.contact_id && aggregatedLegacyIds.has(interaction.contact_id),
-        );
-
-        setLinkedPeople(aggregatedLinkedPeople);
-        setLinkedInteractions(aggregatedInteractions);
-        setMessage({
-          tone: "success",
-          text: `Commercial Intelligence Hub loaded. ${filteredAccounts.length} matching location${
-            filteredAccounts.length === 1 ? "" : "s"
-          } and ${aggregatedLinkedPeople.length} linked people found.`,
-        });
-        setIsProcessingSearch(false);
-      } catch (error) {
-        if (cancelled) return;
-
-        const messageText =
-          error instanceof Error
-            ? error.message
-            : "An unexpected error occurred while processing the search.";
-
-        setAccounts([]);
-        setSelectedAccount(null);
-        setLinkedPeople([]);
-        setLinkedInteractions([]);
-        setMessage({
-          tone: "error",
-          text: `Could not process search. ${messageText}`,
-        });
-        setIsProcessingSearch(false);
-      }
-    };
-
-    void runSearch();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    query,
-    allAccounts,
-    allPeople,
-    allInteractions,
-    legacyIdsByPeopleId,
-    manualLinks,
-    selectedAccount?.id,
-    isLoadingBaseData,
-    supabase,
-  ]);
+    if (accountToSelect?.id !== selectedAccountId) {
+      setSelectedAccountId(accountToSelect?.id ?? null);
+    }
+  }, [selectedGroup, selectedGroupKey, selectedAccountId]);
 
   useEffect(() => {
     if (!selectedAccount || isEditingAccount) return;
     setEditForm(buildEditForm(selectedAccount));
   }, [selectedAccount, isEditingAccount]);
 
-  const totalLocations = accounts.length;
+  useEffect(() => {
+    if (isLoadingBaseData) return;
 
-  const totalAgronomyLocations = useMemo(
-    () => accounts.filter((account) => isAgronomyAccount(account)).length,
-    [accounts],
+    const q = query.trim();
+    if (q.length < 2) {
+      setMessage({
+        tone: "info",
+        text: "Type at least two characters to search account-level Commercial Intelligence.",
+      });
+      return;
+    }
+
+    if (filteredGroups.length === 0) {
+      setMessage({
+        tone: "info",
+        text: "No account groups matched your search.",
+      });
+      return;
+    }
+
+    const peopleCount = filteredGroups.reduce((sum, group) => sum + group.people.length, 0);
+    const interactionCount = filteredGroups.reduce(
+      (sum, group) => sum + group.interactions.length,
+      0,
+    );
+
+    setMessage({
+      tone: "success",
+      text: `Commercial Intelligence Hub loaded. ${filteredGroups.length} account group${
+        filteredGroups.length === 1 ? "" : "s"
+      }, ${peopleCount} directly linked people, and ${interactionCount} direct interactions found.`,
+    });
+  }, [filteredGroups, isLoadingBaseData, query]);
+
+  const searchedLocationCount = useMemo(
+    () => filteredGroups.reduce((sum, group) => sum + group.directLocationCount, 0),
+    [filteredGroups],
   );
 
-  const agronomyCoveragePercent =
-    totalLocations > 0
-      ? Math.round((totalAgronomyLocations / totalLocations) * 100)
-      : 0;
+  const searchedPeopleCount = useMemo(
+    () => filteredGroups.reduce((sum, group) => sum + group.people.length, 0),
+    [filteredGroups],
+  );
 
-  const peopleByAccountId = useMemo(() => {
-    const map = new Map<string, PeopleRow[]>();
+  const searchedInteractionCount = useMemo(
+    () => filteredGroups.reduce((sum, group) => sum + group.interactions.length, 0),
+    [filteredGroups],
+  );
 
-    accounts.forEach((account) => {
-      map.set(
-        account.id,
-        linkedPeople.filter((person) => isLinkedPerson(account, person, manualLinks)),
-      );
-    });
+  const searchedActive90Count = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 90);
 
-    return map;
-  }, [accounts, linkedPeople, manualLinks]);
-
-  const interactionsByAccountId = useMemo(() => {
-    const map = new Map<string, InteractionRow[]>();
-
-    accounts.forEach((account) => {
-      const peopleForAccount = peopleByAccountId.get(account.id) ?? [];
-      const legacyIds = new Set<string>();
-
-      peopleForAccount.forEach((person) => {
-        const ids = legacyIdsByPeopleId.get(person.id) ?? new Set<string>();
-        ids.forEach((id) => legacyIds.add(id));
-      });
-
-      const accountInteractions = allInteractions.filter(
-        (interaction) =>
-          !!interaction.contact_id && legacyIds.has(interaction.contact_id),
-      );
-
-      map.set(account.id, accountInteractions);
-    });
-
-    return map;
-  }, [accounts, peopleByAccountId, legacyIdsByPeopleId, allInteractions]);
-
-  const locationsContacted = useMemo(() => {
-    return accounts.filter((account) => {
-      const interactions = interactionsByAccountId.get(account.id) ?? [];
-      return interactions.length > 0;
-    }).length;
-  }, [accounts, interactionsByAccountId]);
-
-  const ninetyDaysAgo = useMemo(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 90);
-    return date;
-  }, []);
-
-  const activeLocationsLast90 = useMemo(() => {
-    return accounts.filter((account) => {
-      const interactions = interactionsByAccountId.get(account.id) ?? [];
-      return interactions.some((interaction) => {
+    return filteredGroups.filter((group) =>
+      group.interactions.some((interaction) => {
         const rawDate = interaction.date || interaction.created_at;
         if (!rawDate) return false;
 
         const parsed = new Date(rawDate);
         if (Number.isNaN(parsed.getTime())) return false;
 
-        return parsed >= ninetyDaysAgo;
-      });
-    }).length;
-  }, [accounts, interactionsByAccountId, ninetyDaysAgo]);
+        return parsed >= cutoff;
+      }),
+    ).length;
+  }, [filteredGroups]);
 
-  const totalInteractionsForAccountSet = linkedInteractions.length;
-
-  const accountHighestStageById = useMemo(() => {
-    const map = new Map<string, StageKey | null>();
-    const stageOrder: StageKey[] = [
-      "introduction",
-      "technical_training",
-      "field_evaluation",
-      "adoption",
-    ];
-
-    accounts.forEach((account) => {
-      const interactions = interactionsByAccountId.get(account.id) ?? [];
-      let highest: StageKey | null = null;
-
-      interactions.forEach((interaction) => {
-        const stage = normalizeStageKey(interaction.stage);
-        if (!stage) return;
-
-        if (!highest) {
-          highest = stage;
-          return;
-        }
-
-        if (stageOrder.indexOf(stage) > stageOrder.indexOf(highest)) {
-          highest = stage;
-        }
-      });
-
-      map.set(account.id, highest);
-    });
-
-    return map;
-  }, [accounts, interactionsByAccountId]);
-
-  const introStageLocations = useMemo(
+  const selectedGroupContacts = useMemo(
     () =>
-      accounts.filter(
-        (account) => accountHighestStageById.get(account.id) === "introduction",
-      ).length,
-    [accounts, accountHighestStageById],
+      selectedGroup?.people.filter((person) =>
+        normalizeForMatch(person.contact_type).includes("contact"),
+      ).length ?? 0,
+    [selectedGroup],
   );
 
-  const technicalTrainingLocations = useMemo(
+  const selectedGroupKingpins = useMemo(
     () =>
-      accounts.filter(
-        (account) => accountHighestStageById.get(account.id) === "technical_training",
-      ).length,
-    [accounts, accountHighestStageById],
+      selectedGroup?.people.filter(
+        (person) =>
+          person.is_kingpin === true ||
+          normalizeForMatch(person.contact_type).includes("kingpin"),
+      ).length ?? 0,
+    [selectedGroup],
   );
 
-  const fieldEvaluationLocations = useMemo(
-    () =>
-      accounts.filter(
-        (account) => accountHighestStageById.get(account.id) === "field_evaluation",
-      ).length,
-    [accounts, accountHighestStageById],
+  const selectedGroupOtherPeople = Math.max(
+    (selectedGroup?.people.length ?? 0) - selectedGroupContacts - selectedGroupKingpins,
+    0,
   );
 
-  const adoptionLocations = useMemo(
-    () =>
-      accounts.filter(
-        (account) => accountHighestStageById.get(account.id) === "adoption",
-      ).length,
-    [accounts, accountHighestStageById],
-  );
+  const selectedHighestStage = selectedGroup
+    ? formatHighestStage(selectedGroup.interactions)
+    : "Unstaged";
 
-  const sortedTimelineInteractions = useMemo(() => {
-    return [...linkedInteractions].sort((a, b) => {
-      const aDate = a.date ?? a.created_at ?? "";
-      const bDate = b.date ?? b.created_at ?? "";
-      return bDate.localeCompare(aDate);
-    });
-  }, [linkedInteractions]);
-
-  const mostRecentInteraction = sortedTimelineInteractions[0] ?? null;
-
-  const contactCount = linkedPeople.filter((person) =>
-    normalizeForMatch(person.contact_type).includes("contact"),
-  ).length;
-
-  const kingpinCount = linkedPeople.filter(
-    (person) =>
-      person.is_kingpin === true ||
-      normalizeForMatch(person.contact_type).includes("kingpin"),
-  ).length;
-
-  const otherCount = Math.max(linkedPeople.length - contactCount - kingpinCount, 0);
+  const selectedMostRecentInteraction = selectedGroup?.interactions[0] ?? null;
 
   const handleEditField = (field: keyof AccountEditForm, value: string) => {
     setEditForm((current) => ({
@@ -1136,13 +981,7 @@ export default function CommercialIntelligenceHubPage() {
         .sort(sortAccounts),
     );
 
-    setAccounts((current) =>
-      current
-        .map((account) => (account.id === updatedAccount.id ? updatedAccount : account))
-        .sort(sortAccounts),
-    );
-
-    setSelectedAccount(updatedAccount);
+    setSelectedAccountId(updatedAccount.id);
     setEditForm(buildEditForm(updatedAccount));
     setIsEditingAccount(false);
     setIsSavingAccount(false);
@@ -1152,18 +991,11 @@ export default function CommercialIntelligenceHubPage() {
     });
   };
 
-  const handleSaveEntireCompany = async () => {
-    if (!selectedAccount) return;
+  const handleSaveEntireAccountGroup = async () => {
+    if (!selectedGroup) return;
 
-    const retailerKey = normalizeValue(selectedAccount.retailer);
-
-    if (!retailerKey) {
-      setMessage({
-        tone: "error",
-        text: "Cannot apply company-wide updates because this account does not have a retailer value.",
-      });
-      return;
-    }
+    const accountIds = selectedGroup.accounts.map((account) => account.id);
+    if (accountIds.length === 0) return;
 
     setIsSavingAccount(true);
 
@@ -1176,13 +1008,13 @@ export default function CommercialIntelligenceHubPage() {
     const { data, error } = await supabase
       .from("accounts")
       .update(sharedPayload)
-      .eq("retailer", retailerKey)
+      .in("id", accountIds)
       .select(ACCOUNT_SELECT);
 
     if (error) {
       setMessage({
         tone: "error",
-        text: `Could not apply company-wide updates. ${error.message}`,
+        text: `Could not apply account-wide updates. ${error.message}`,
       });
       setIsSavingAccount(false);
       return;
@@ -1191,71 +1023,69 @@ export default function CommercialIntelligenceHubPage() {
     const updatedRows = (data ?? []) as AccountRow[];
     const updatedMap = new Map(updatedRows.map((row) => [row.id, row]));
 
-    const nextAllAccounts = allAccounts
-      .map((account) => updatedMap.get(account.id) ?? account)
-      .sort(sortAccounts);
-
-    const nextAccounts = accounts
-      .map((account) => updatedMap.get(account.id) ?? account)
-      .sort(sortAccounts);
+    setAllAccounts((current) =>
+      current
+        .map((account) => updatedMap.get(account.id) ?? account)
+        .sort(sortAccounts),
+    );
 
     const refreshedSelectedAccount =
-      updatedMap.get(selectedAccount.id) ?? selectedAccount;
+      updatedMap.get(selectedAccount?.id ?? "") ?? selectedAccount ?? null;
 
-    setAllAccounts(nextAllAccounts);
-    setAccounts(nextAccounts);
-    setSelectedAccount(refreshedSelectedAccount);
+    setSelectedAccountId(refreshedSelectedAccount?.id ?? null);
     setEditForm(buildEditForm(refreshedSelectedAccount));
     setIsEditingAccount(false);
     setIsSavingAccount(false);
     setMessage({
       tone: "success",
-      text: `Shared company updates applied to ${updatedRows.length} ${updatedRows.length === 1 ? "location" : "locations"} for ${retailerKey}.`,
+      text: `Shared account updates applied to ${updatedRows.length} ${
+        updatedRows.length === 1 ? "location" : "locations"
+      } for ${selectedGroup.longName}.`,
     });
   };
 
   return (
     <HubShell
       title="Commercial Intelligence Hub"
-      subtitle="Search a commercial account, review linked people, correct account data, and use this page as the working intelligence center for relationship decisions."
+      subtitle="Account-level relationship intelligence. Direct activity is counted only when an interaction is tied to a person who is linked to that account."
     >
       <div className="grid gap-6">
         <SectionCard
-          title="General Account Summary"
-          description="High-level snapshot of the full CERTIS DCM database."
+          title="General Database Summary"
+          description="High-level snapshot of the full CERTIS DCM database and current account-linking coverage."
         >
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
             <KpiCard label="Total Accounts" value={summaryCounts.totalAccounts} />
-            <KpiCard label="Total Agronomy Accounts" value={summaryCounts.totalAgronomyAccounts} />
-            <KpiCard label="Total Contacts" value={summaryCounts.totalContacts} />
-            <KpiCard label="Total Kingpins" value={summaryCounts.totalKingpins} />
-            <KpiCard label="Total Interactions" value={summaryCounts.totalInteractions} />
+            <KpiCard label="Agronomy Accounts" value={summaryCounts.totalAgronomyAccounts} />
+            <KpiCard label="People" value={summaryCounts.totalPeople} />
+            <KpiCard label="Contacts" value={summaryCounts.totalContacts} />
+            <KpiCard label="Kingpins" value={summaryCounts.totalKingpins} />
+            <KpiCard label="Interactions" value={summaryCounts.totalInteractions} />
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
+            <KpiCard label="People Linked to Accounts" value={summaryCounts.linkedPeople} />
+            <KpiCard label="Interactions Linked to Accounts" value={summaryCounts.linkedInteractions} />
           </div>
         </SectionCard>
 
         <SectionCard
           title="Commercial Search"
-          description="Search by account, retailer, city, state, supplier, category, or linked person name."
+          description="Search by account group, location, city, state, supplier, category, linked person, email, or company name. Results are grouped by long_name first."
         >
           <Input
-            label="Search Accounts"
+            label="Search Account-Level CI"
             value={query}
             onChange={setQuery}
-            placeholder="Type an account, city, state, supplier, category, or person name"
+            placeholder="Example: Landus, Agtegra, Kevin Bown, Waverly, IA, Winfield"
           />
 
           {isLoadingBaseData ? (
             <div className="mt-4">
               <StatusMessage
-                message="Loading account, people, manual links, legacy links, and interaction data..."
+                message="Loading accounts, people, person-account links, and interactions..."
                 tone="info"
               />
-            </div>
-          ) : null}
-
-          {isProcessingSearch ? (
-            <div className="mt-4">
-              <StatusMessage message="Processing commercial search..." tone="info" />
             </div>
           ) : null}
 
@@ -1265,21 +1095,30 @@ export default function CommercialIntelligenceHubPage() {
             </div>
           ) : null}
 
-          <div className="mt-4 max-h-[28rem] space-y-3 overflow-y-auto pr-2">
-            {accounts.map((account) => {
-              const isSelected = selectedAccount?.id === account.id;
-              const displayRelevance = isHeadquartersAccount(account)
-                ? "hq / agronomy"
-                : account.row_crop_relevance || "unknown";
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <KpiCard label="Matched Account Groups" value={filteredGroups.length} />
+            <KpiCard label="Matched Locations" value={searchedLocationCount} />
+            <KpiCard label="Direct Linked People" value={searchedPeopleCount} />
+            <KpiCard label="Direct Interactions" value={searchedInteractionCount} />
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
+            <KpiCard label="Active Account Groups (90d)" value={searchedActive90Count} />
+            <KpiCard label="Current Account Stage" value={selectedHighestStage} />
+          </div>
+
+          <div className="mt-4 max-h-[32rem] space-y-3 overflow-y-auto pr-2">
+            {filteredGroups.map((group) => {
+              const isSelected = selectedGroup?.key === group.key;
 
               return (
                 <button
-                  key={account.id}
+                  key={group.key}
                   type="button"
                   onClick={() => {
-                    setSelectedAccount(account);
+                    setSelectedGroupKey(group.key);
+                    setSelectedAccountId(group.accounts[0]?.id ?? null);
                     setIsEditingAccount(false);
-                    setEditForm(buildEditForm(account));
                   }}
                   className={`w-full rounded-2xl border p-4 text-left transition ${
                     isSelected
@@ -1288,24 +1127,18 @@ export default function CommercialIntelligenceHubPage() {
                   }`}
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="font-bold">{getAccountDisplayName(account)}</div>
-                    {account.category ? <RecordBadge>{account.category}</RecordBadge> : null}
-                    <RecordBadge>{displayRelevance}</RecordBadge>
+                    <div className="text-lg font-bold">{group.longName}</div>
+                    <RecordBadge>{group.directLocationCount} locations</RecordBadge>
+                    <RecordBadge>{group.people.length} people</RecordBadge>
+                    <RecordBadge>{group.interactions.length} direct interactions</RecordBadge>
                   </div>
 
-                  <div className="mt-2 text-sm">
-                    <AddressValueLink
-                      value={getAccountAddress(account)}
-                      address={account.address}
-                      city={account.city}
-                      state={account.state}
-                      zip={account.zip}
-                      label={getAccountDisplayName(account)}
-                    />
+                  <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                    Last direct interaction: {formatDate(group.lastInteractionDate)}
                   </div>
 
                   <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                    Suppliers: {account.suppliers || "Not listed"}
+                    Highest stage: {formatHighestStage(group.interactions)}
                   </div>
                 </button>
               );
@@ -1314,22 +1147,60 @@ export default function CommercialIntelligenceHubPage() {
         </SectionCard>
 
         <SectionCard
-          title="Commercial Relationship Timeline"
-          description="Current scaffold for account-set interaction history. This sits directly below search and will be upgraded into the full multi-user stage timeline."
+          title="Selected Account-Level Intelligence"
+          description="Truth layer for the selected long_name account group. Counts are direct only; remote influencer contacts should be handled separately."
         >
-          {sortedTimelineInteractions.length === 0 ? (
+          {selectedGroup ? (
+            <div className="grid gap-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Account Group
+                </div>
+                <div className="mt-1 text-3xl font-bold">{selectedGroup.longName}</div>
+                <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                  Direct activity reflects interactions connected through people.account_id or manual person-account links. It does not copy network or remote influencer activity across every location.
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                <KpiCard label="Locations" value={selectedGroup.directLocationCount} />
+                <KpiCard label="Agronomy Locations" value={selectedGroup.agronomyLocationCount} />
+                <KpiCard label="Linked People" value={selectedGroup.people.length} />
+                <KpiCard label="Direct Interactions" value={selectedGroup.interactions.length} />
+                <KpiCard label="Last Interaction" value={formatDate(selectedGroup.lastInteractionDate)} />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <KpiCard label="Contacts" value={selectedGroupContacts} />
+                <KpiCard label="Kingpins" value={selectedGroupKingpins} />
+                <KpiCard label="Other / Unassigned" value={selectedGroupOtherPeople} />
+              </div>
+            </div>
+          ) : (
             <StatusMessage
-              message="No linked interactions found for the current matched account set yet."
+              message="Search and select an account group to load account-level intelligence."
+              tone="info"
+            />
+          )}
+        </SectionCard>
+
+        <SectionCard
+          title="Direct Interaction Timeline"
+          description="Interactions tied to people who are directly linked to this selected account group."
+        >
+          {!selectedGroup || selectedGroup.interactions.length === 0 ? (
+            <StatusMessage
+              message="No direct person-linked interactions found for the selected account group."
               tone="info"
             />
           ) : (
             <div className="space-y-3">
               <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-                Timeline scaffold is now in place. Next build step can convert this feed into the full multi-user horizontal progression view across Introduction, Technical Training, Field Evaluation, and Adoption.
+                This is the conservative, truthful activity feed. Network/influencer activity should be displayed separately later rather than inflated into every account.
               </div>
 
-              <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-2">
-                {sortedTimelineInteractions.slice(0, 40).map((interaction) => (
+              <div className="max-h-[32rem] space-y-3 overflow-y-auto pr-2">
+                {selectedGroup.interactions.slice(0, 75).map((interaction) => (
                   <div
                     key={interaction.id}
                     className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800"
@@ -1344,7 +1215,7 @@ export default function CommercialIntelligenceHubPage() {
                         {formatStageLabel(interaction.stage)}
                       </span>
                       <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        {formatInteractionDate(interaction.date || interaction.created_at)}
+                        {formatDate(interaction.date || interaction.created_at)}
                       </span>
                     </div>
 
@@ -1352,7 +1223,7 @@ export default function CommercialIntelligenceHubPage() {
                       {interaction.summary || "Interaction"}
                     </div>
 
-                    <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                    <div className="mt-2 whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-300">
                       {interaction.details || interaction.outcome || "No additional details recorded."}
                     </div>
                   </div>
@@ -1363,36 +1234,78 @@ export default function CommercialIntelligenceHubPage() {
         </SectionCard>
 
         <SectionCard
-          title="Commercial Footprint"
-          description="Coverage, activity, and stage progression across the matched account set."
+          title="Locations Under This Account"
+          description="Locations are supporting detail under the account-level relationship, not the primary CI unit."
         >
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <KpiCard label="Total Locations" value={totalLocations} />
-            <KpiCard label="Total Agronomy Locations" value={totalAgronomyLocations} />
-            <KpiCard label="Agronomy Coverage" value={`${agronomyCoveragePercent}%`} />
-            <KpiCard label="Locations Contacted" value={locationsContacted} />
-            <KpiCard label="Active Locations (90d)" value={activeLocationsLast90} />
-          </div>
+          {!selectedGroup ? (
+            <StatusMessage message="No account group selected." tone="info" />
+          ) : (
+            <div className="max-h-[34rem] space-y-3 overflow-y-auto pr-2">
+              {selectedGroup.accounts.map((account) => {
+                const isSelected = selectedAccount?.id === account.id;
+                const peopleAtLocation = getPeopleForAccountIds(
+                  new Set([account.id]),
+                  allPeople,
+                  manualLinks,
+                );
+                const interactionsAtLocation = getInteractionsForPeople(
+                  peopleAtLocation,
+                  allInteractions,
+                );
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <KpiCard label="Total Interactions" value={totalInteractionsForAccountSet} />
-            <KpiCard label="Intro Locations" value={introStageLocations} />
-            <KpiCard label="Technical Training" value={technicalTrainingLocations} />
-            <KpiCard label="Field Evaluation" value={fieldEvaluationLocations} />
-            <KpiCard label="Adoption" value={adoptionLocations} />
-          </div>
+                return (
+                  <button
+                    key={account.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedAccountId(account.id);
+                      setIsEditingAccount(false);
+                      setEditForm(buildEditForm(account));
+                    }}
+                    className={`w-full rounded-2xl border p-4 text-left transition ${
+                      isSelected
+                        ? "border-emerald-500 bg-emerald-50 dark:border-emerald-400 dark:bg-emerald-950/30"
+                        : "border-slate-200 bg-white hover:border-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-emerald-400"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-bold">{getAccountDisplayName(account)}</div>
+                      {account.category ? <RecordBadge>{account.category}</RecordBadge> : null}
+                      <RecordBadge>{peopleAtLocation.length} people</RecordBadge>
+                      <RecordBadge>{interactionsAtLocation.length} direct interactions</RecordBadge>
+                    </div>
+
+                    <div className="mt-2 text-sm">
+                      <AddressValueLink
+                        value={getAccountAddress(account)}
+                        address={account.address}
+                        city={account.city}
+                        state={account.state}
+                        zip={account.zip}
+                        label={getAccountDisplayName(account)}
+                      />
+                    </div>
+
+                    <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                      Suppliers: {account.suppliers || "Not listed"}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </SectionCard>
 
         <SectionCard
-          title="Account Intelligence"
-          description="Review and correct the core business details for the selected location."
+          title="Selected Location Details"
+          description="Review and correct the core business details for the selected location. Shared account edits can be applied across all locations in the selected account group."
         >
           {selectedAccount ? (
             <div className="grid gap-4">
               <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
                 <div>
                   <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Account Name
+                    Selected Location
                   </div>
                   <div className="mt-1 text-2xl font-bold">
                     {getAccountDisplayName(selectedAccount)}
@@ -1405,7 +1318,7 @@ export default function CommercialIntelligenceHubPage() {
                 <div className="flex flex-wrap gap-2">
                   {!isEditingAccount ? (
                     <SecondaryButton onClick={handleStartEditing}>
-                      Edit Account Details
+                      Edit Location Details
                     </SecondaryButton>
                   ) : (
                     <SecondaryButton
@@ -1574,7 +1487,7 @@ export default function CommercialIntelligenceHubPage() {
 
                   <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
                     Use <span className="font-semibold">Save This Location</span> for local fields
-                    like phone or address. Use <span className="font-semibold">Save Entire Company</span> for shared fields like supplier, category, and row crop relevance.
+                    like phone or address. Use <span className="font-semibold">Save Entire Account Group</span> for shared fields like supplier, category, and row crop relevance.
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -1586,10 +1499,10 @@ export default function CommercialIntelligenceHubPage() {
                     </PrimaryButton>
 
                     <SecondaryButton
-                      onClick={handleSaveEntireCompany}
+                      onClick={handleSaveEntireAccountGroup}
                       disabled={isSavingAccount}
                     >
-                      {isSavingAccount ? "Saving..." : "Save Entire Company"}
+                      {isSavingAccount ? "Saving..." : "Save Entire Account Group"}
                     </SecondaryButton>
                   </div>
                 </div>
@@ -1597,70 +1510,24 @@ export default function CommercialIntelligenceHubPage() {
             </div>
           ) : (
             <StatusMessage
-              message="Search and select an account to load the Commercial Intelligence Hub."
+              message="Search and select an account group, then select a location to view or edit details."
               tone="info"
             />
           )}
         </SectionCard>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <SectionCard
-            title="People Snapshot"
-            description="Quick count of linked records across all currently matched locations."
-          >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <KpiCard label="Contacts" value={contactCount} />
-              <KpiCard label="Kingpins" value={kingpinCount} />
-              <div className="sm:col-span-2">
-                <KpiCard label="Other / Unassigned" value={otherCount} />
-              </div>
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            title="Recent Activity Summary"
-            description="Read-only snapshot of interaction activity across all currently matched locations."
-          >
-            <div className="grid gap-4">
-              <KpiCard label="Logged Interactions" value={linkedInteractions.length} />
-
-              <div className="flex min-h-[7.25rem] flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="min-h-[2.25rem] text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Most Recent Interaction Date
-                </div>
-                <div className="mt-2 font-semibold">
-                  {mostRecentInteraction?.date ||
-                    mostRecentInteraction?.created_at ||
-                    "No activity recorded"}
-                </div>
-              </div>
-
-              <div className="flex min-h-[7.25rem] flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="min-h-[2.25rem] text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Most Recent Interaction Type
-                </div>
-                <div className="mt-2 font-semibold">
-                  {mostRecentInteraction?.type || "No activity recorded"}
-                </div>
-              </div>
-
-              <KpiCard label="Linked People" value={linkedPeople.length} />
-            </div>
-          </SectionCard>
-        </div>
-
         <SectionCard
           title="Linked People"
-          description="People associated with the current matched account set. Manual account links are prioritized over direct account IDs and fuzzy matching."
+          description="People directly associated with the selected account group through account_id or manual person-account links."
         >
-          {linkedPeople.length === 0 ? (
+          {!selectedGroup || selectedGroup.people.length === 0 ? (
             <StatusMessage
-              message="No linked people found for this account set yet."
+              message="No directly linked people found for this selected account group."
               tone="info"
             />
           ) : (
             <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-2">
-              {linkedPeople.map((person) => (
+              {selectedGroup.people.map((person) => (
                 <div
                   key={person.id}
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800"
@@ -1729,9 +1596,7 @@ export default function CommercialIntelligenceHubPage() {
           description="Working space for what this account means commercially and what should happen next."
         >
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-700 dark:bg-slate-800">
-            This page now prioritizes manual person-account links, then direct account_id links,
-            then fuzzy company matching. Legacy contacts and kingpins are used only to bridge
-            older interaction records into the current people backbone.
+            Account-level CI is now grouped by long_name first. Direct interactions are counted only through linked people. This intentionally avoids inflating location-level activity with remote supplier or network influencer conversations.
           </div>
         </SectionCard>
       </div>
